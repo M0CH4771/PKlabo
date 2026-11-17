@@ -682,3 +682,49 @@ body:has(.pickbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inse
 .jump-imp { color: var(--accent); font-weight: 700; }
 .shipfee { display: grid; gap: 4px; background: #f6f7f8; border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
 .shipfee .fb-track { margin-top: 4px; }
+
+/* ── オリパ一覧：タブ・並び替え・カード ── */
+.otabs { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.otabs .seg { flex: 1; min-width: 230px; max-width: 420px; }
+.otabs select { font-size: 14px; padding: 8px 28px 8px 10px; }
+.otags { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: calc(100% - 16px); }
+.otag { font-size: 11px; font-weight: 700; line-height: 1.5; padding: 1px 7px; border-radius: 2px; background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.otag.hot { background: var(--accent); color: #fff; }
+.otag.lo { background: var(--pop); }
+.otops { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px 12px 0; }
+.otop { position: relative; display: block; aspect-ratio: 5 / 7; border-radius: 3px; overflow: hidden; background: #dde1e6; }
+.otop img { width: 100%; height: 100%; object-fit: cover; }
+.otop .rtag { position: absolute; left: 3px; top: 3px; }
+.otop.out img { filter: grayscale(1); opacity: .5; }
+.omin { color: var(--ink); }
+.omin b { display: inline-block; margin-right: 6px; padding: 0 6px; font-size: 11px; background: var(--ink); color: #fff; border-radius: 2px; }
+
+/* 賞の札（色は開封演出と同じ：青・赤・金・虹） */
+.rtag { display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.55; padding: 0 7px; border-radius: 2px; background: var(--ink); color: #fff; white-space: nowrap; }
+.rtag.fx-1 { background: #2f7bff; } .rtag.fx-2 { background: #e8212e; } .rtag.fx-3 { background: linear-gradient(115deg, #b8860b, #ffd84a 45%, #b8860b); color: #3a2a00; }
+.rtag.fx-4 { background: linear-gradient(90deg, #ff3b5c, #ff9f1a, #ffd23a, #3ddc84, #2fb7ff, #8a5cff); text-shadow: 0 1px 1px rgba(0,0,0,.35); }
+.rtag.fx-lo { background: var(--pop); color: var(--ink); }
+
+/* ── ラインナップ ── */
+.lineup { display: grid; gap: 4px; }
+.minguar { display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; padding: 10px 12px; background: #f6f7f8; border: 1px solid var(--line); border-left: 4px solid var(--ink); border-radius: 2px; }
+.minguar b { flex: none; font-size: 12px; padding: 1px 8px; background: var(--ink); color: #fff; border-radius: 2px; }
+.minguar span { font-weight: 700; }
+.lg { padding: 12px 0 4px; border-top: 1px solid var(--line); }
+.lg:first-of-type { border-top: none; }
+.lg h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }
+.lg h4 .rtag { font-size: 13px; padding: 1px 10px; }
+.lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
+.lgrid.big { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+@media (min-width: 640px) { .lgrid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } .lgrid.big { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); } }
+.lc { display: grid; gap: 3px; align-content: start; font-size: 12.5px; }
+.lc b { line-height: 1.35; }
+.lc-img { position: relative; aspect-ratio: 5 / 7; border-radius: 4.5% / 3.2%; overflow: hidden; background: #dde1e6; }
+.lc-img img, .lc-img .noimg { width: 100%; height: 100%; object-fit: cover; border: none; }
+.lg.fx-1 .lc-img { box-shadow: 0 0 0 2px #2f7bff; } .lg.fx-2 .lc-img { box-shadow: 0 0 0 2px #e8212e; }
+.lg.fx-3 .lc-img { box-shadow: 0 0 0 2px #e0a800, 0 0 12px rgba(224, 168, 0, .45); }
+.lg.fx-4 .lc-img { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #8a5cff, 0 0 14px rgba(138, 92, 255, .5); }
+.lg.fx-lo .lc-img { box-shadow: 0 0 0 2px #e0a800; }
+.lc.out .lc-img img { filter: grayscale(1); opacity: .45; }
+.lc-out { position: absolute; left: 6%; right: 6%; top: 42%; padding: 3px 0; text-align: center; font-size: 12px; font-weight: 700; color: #fff; background: rgba(28, 34, 48, .85); transform: rotate(-8deg); }
+.lc.out b { color: var(--muted); }

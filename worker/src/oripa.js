@@ -13,7 +13,7 @@ function requireOripa(env) {
 async function prizesFor(env, ids) {
   if (!ids.length) return {};
   const { results } = await env.DB.prepare(
-    `SELECT oripa_id, id, rank, name, image_url, qty, value, is_last_one, sort FROM oripa_prizes
+    `SELECT oripa_id, id, rank, name, image_url, qty, remaining, value, is_last_one, sort, fx FROM oripa_prizes
       WHERE oripa_id IN (${ids.map(() => '?').join(',')}) ORDER BY is_last_one DESC, sort, value DESC, id`
   ).bind(...ids).all();
   const g = {};
@@ -23,10 +23,18 @@ async function prizesFor(env, ids) {
 
 const isOpen = o => o.status === 'live' && (!o.starts_at || o.starts_at <= toSql(new Date())) && (!o.ends_at || o.ends_at > toSql(new Date()));
 
-// 設定で非公開にした数字（封入数・参考価格）はお客様側に送らない
+// 設定で非公開にした数字（封入数・参考価格）はお客様側に送らない。賞ごとの残り数も送らない。
+// コインで引く方式（引いた瞬間に確定・取り消しなし）のときだけ、出きった賞に「排出済み」の印を付ける
 function publicPrizes(env, prizes) {
-  const { showQty, showValue } = cfg(env).oripa;
-  return (prizes || []).map(({ oripa_id, sort, ...p }) => ({ ...p, qty: showQty ? p.qty : undefined, value: showValue ? p.value : undefined }));
+  const c = cfg(env);
+  const { showQty, showValue } = c.oripa;
+  const list = prizes || [];
+  const fx = fxOf(list);
+  const allOut = list.filter(p => !p.is_last_one).every(p => p.remaining <= 0);
+  return list.map(({ oripa_id, sort, remaining, fx: _f, ...p }) => ({
+    ...p, qty: showQty ? p.qty : undefined, value: showValue ? p.value : undefined, fx: fx.get(p.id) || 0,
+    out: c.features.coins ? (p.is_last_one ? allOut : remaining <= 0) : undefined,
+  }));
 }
 
 function publicOripa(o, prizes) {

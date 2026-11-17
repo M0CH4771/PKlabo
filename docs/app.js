@@ -204,17 +204,44 @@
       <p class="small muted">ほかに<a href="legal.html#oripa" target="_blank" rel="noopener">特定商取引法に基づく表記（オリパについて）</a>もご確認ください。</p>
     </details>`;
   }
+  // 賞を「賞（ランク）ごと」にまとめる（並びは管理画面の順）
+  function prizeGroups(o) {
+    const groups = [];
+    o.prizes.filter(p => !p.is_last_one).forEach(p => {
+      const k = String(p.rank || '').trim() || '賞';
+      let g = groups.find(x => x.rank === k);
+      if (!g) { g = { rank: k, fx: p.fx || 0, items: [] }; groups.push(g); }
+      g.fx = Math.max(g.fx, p.fx || 0);
+      g.items.push(p);
+    });
+    return groups;
+  }
+  // 最低保証：いちばん下の賞（演出がいちばん弱く、並びが最後の賞）
+  function minGuarantee(o) {
+    const gs = prizeGroups(o);
+    if (gs.length < 2) return '';
+    const low = gs.reduce((a, g) => (g.fx <= a.fx ? g : a), gs[0]);
+    const names = [...new Set(low.items.map(p => p.name))];
+    return names.length === 1 ? names[0] : `${low.rank}（${names.length}種）`;
+  }
+  const fxRankTag = (rank, fx, lo) => `<span class="rtag fx-${lo ? 'lo' : fx || 0}">${esc(lo ? 'ラストワン賞' : rank)}</span>`;
   function oripaCard(o) {
     const pct = o.total ? Math.round(o.remaining / o.total * 100) : 0;
-    const top = o.prizes.filter(p => !p.is_last_one)[0];
+    const tops = o.prizes.filter(p => !p.is_last_one && p.image_url).sort((a, b) => (b.fx || 0) - (a.fx || 0)).slice(0, 3);
+    const lo = o.prizes.find(p => p.is_last_one);
+    const few = o.open && o.total && o.remaining / o.total <= 0.1;
+    const min = minGuarantee(o);
     return `
       <a class="ocard ${o.open ? '' : 'closed'}" href="#/oripa/${o.id}">
-        <div class="oimg">${o.image_url ? `<img src="${esc(o.image_url)}" alt="" loading="lazy">` : `<div class="oph">${esc(o.title)}</div>`}${o.open ? '' : '<span class="sold">完売・終了</span>'}</div>
+        <div class="oimg">${o.image_url ? `<img src="${esc(o.image_url)}" alt="" loading="lazy">` : `<div class="oph">${esc(o.title)}</div>`}
+          <span class="otags">${few ? '<span class="otag hot">残りわずか</span>' : ''}${o.pick_mode ? '<span class="otag">パックを選べる</span>' : ''}${lo ? '<span class="otag lo">ラストワン賞あり</span>' : ''}</span>
+          ${o.open ? '' : '<span class="sold">完売・終了</span>'}</div>
+        ${tops.length ? `<div class="otops">${tops.map(p => `<span class="otop ${p.out ? 'out' : ''}"><img src="${esc(p.image_url)}" alt="" loading="lazy">${fxRankTag(p.rank, p.fx)}</span>`).join('')}</div>` : ''}
         <div class="obody">
           <b class="oname">${esc(o.title)}</b>
-          ${top ? `<span class="muted small">最高賞：${esc(top.rank)} ${esc(top.name)}</span>` : ''}
+          ${min ? `<span class="small omin"><b>最低保証</b> ${esc(min)}</span>` : ''}
           <div class="obar"><i style="width:${pct}%"></i></div>
-          <div class="row-between small"><span>残り <b>${o.remaining}</b> / ${o.total}口</span><span class="price">${F_ON.coins ? `${o.price.toLocaleString()}<small>${esc(config.coin.name)}/口</small>` : `${yen(o.price)}<small>/口</small>`}</span></div>
+          <div class="row-between small"><span>残り <b>${o.remaining.toLocaleString()}</b> / ${o.total.toLocaleString()}口</span><span class="price">${F_ON.coins ? `${o.price.toLocaleString()}<small>${esc(config.coin.name)}/口</small>` : `${yen(o.price)}<small>/口</small>`}</span></div>
         </div>
       </a>`;
   }
@@ -434,15 +461,29 @@
   }
 
   // ─── オリパ ───
+  let oripaTab = 'live', oripaSort = 'rec';
   async function viewOripaList() {
     if (!F_ON.oripa) { location.hash = '#/'; return; }
     await loadOripas(true);
     const live = oripas.filter(o => o.open), ended = oripas.filter(o => !o.open);
+    const sorters = {
+      rec: () => 0,
+      new: (a, b) => b.id - a.id,
+      high: (a, b) => b.price - a.price,
+      low: (a, b) => a.price - b.price,
+      few: (a, b) => (a.total ? a.remaining / a.total : 1) - (b.total ? b.remaining / b.total : 1),
+    };
+    const list = (oripaTab === 'live' ? live : ended).slice().sort(sorters[oripaSort] || sorters.rec);
     app.innerHTML = `
       <h1 class="h">オリパ</h1>
-      <div class="oripa-note">${esc(config.oripa.notice)}<br><b>${esc(config.oripa.ageNotice)}</b></div>
-      <div class="ogrid">${live.map(oripaCard).join('') || '<p class="muted pad center">現在販売中のオリパはありません</p>'}</div>
-      ${ended.length ? `<h2 class="h2">終了したオリパ</h2><div class="ogrid">${ended.map(oripaCard).join('')}</div>` : ''}`;
+      <div class="otabs">
+        <div class="seg"><label><input type="radio" name="otab" value="live" ${oripaTab === 'live' ? 'checked' : ''}><span>販売中（${live.length}）</span></label><label><input type="radio" name="otab" value="ended" ${oripaTab === 'ended' ? 'checked' : ''}><span>完売・終了（${ended.length}）</span></label></div>
+        <select id="osort" aria-label="並び順">${[['rec', 'おすすめ順'], ['new', '新着順'], ['high', '価格が高い順'], ['low', '価格が安い順'], ['few', '残りわずか順']].map(([k, l]) => `<option value="${k}" ${oripaSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      </div>
+      <div class="ogrid">${list.map(oripaCard).join('') || `<p class="muted pad center">${oripaTab === 'live' ? '現在販売中のオリパはありません' : '完売・終了したオリパはありません'}</p>`}</div>
+      <p class="small muted" style="margin-top:14px">${esc(config.oripa.notice)} ${esc(config.oripa.ageNotice)}</p>`;
+    $$('[name=otab]').forEach(r => r.onchange = () => { oripaTab = r.value; viewOripaList(); });
+    $('#osort').onchange = e => { oripaSort = e.target.value; viewOripaList(); };
   }
 
   async function viewOripa(id) {
@@ -461,6 +502,9 @@
     const coinBal = F_ON.coins && me ? (await api('/api/me/coins').catch(() => ({ coins: 0 }))).coins : 0;
     const pick = F_ON.coins && o.pick_mode && o.board;
     const picked = new Set();
+    const lineupCard = p => `<div class="lc ${p.out ? 'out' : ''}">
+      <div class="lc-img">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : '<div class="noimg"></div>'}${p.out ? '<span class="lc-out">排出済み</span>' : ''}</div>
+      <b>${esc(p.name)}</b>${showValue && p.value ? `<span class="small muted">参考 ${yen(p.value)}</span>` : ''}${showQty && !p.is_last_one ? `<span class="small muted">${p.qty}口</span>` : ''}</div>`;
     app.innerHTML = `
       <a href="#/oripa" class="back">← オリパ一覧へ</a>
       <div class="detail">
@@ -488,25 +532,16 @@
         <div class="board" id="board"></div></div>
         ${o.open && me ? `<div class="pickbar" id="pickbar" hidden><span><b id="pbn">0</b>個　<b id="pbc">0</b>${esc(config.coin.name)}</span><button class="btn" id="pbclear">選び直す</button><button class="btn primary" id="pbopen">開封する</button></div>` : ''}` : ''}
       ${importantHtml()}
-      <div class="box">
-        <h3>封入内容</h3>
-        ${showQty ? `<p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>` : ''}
-        <div class="prizes">
-          ${pool.map(p => `
-            <div class="prize">
-              ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
-              <div class="pz-b"><span class="tag rank">${esc(p.rank)}</span> <b>${esc(p.name)}</b>
-                ${showQty || showValue ? `<div class="small muted">${[showValue && `参考価格 ${yen(p.value)}`, showQty && `封入率 ${o.total ? (p.qty / o.total * 100).toFixed(p.qty / o.total < 0.01 ? 2 : 1) : '0'}%`].filter(Boolean).join('　')}</div>` : ''}</div>
-              ${showQty ? `<div class="pz-n"><b>${p.qty}</b><span class="small muted">口</span></div>` : '<span></span>'}
-            </div>`).join('')}
-          ${lastOne ? `
-            <div class="prize last">
-              ${lastOne.image_url ? `<img src="${esc(lastOne.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
-              <div class="pz-b"><span class="tag rank lo">ラストワン賞</span> <b>${esc(lastOne.name)}</b><div class="small muted">最後の1口を引いた方に追加でプレゼント${showValue ? `（参考価格 ${yen(lastOne.value)}）` : ''}</div></div>
-              <span></span>
-            </div>` : ''}
-        </div>
-        ${expect ? `<p class="small muted">1口あたりの参考価格の平均 ${yen(expect)}（参考価格は当店の目安です）</p>` : ''}
+      <div class="box lineup">
+        <div class="row-between"><h3 style="margin:0">ラインナップ</h3><span class="small muted">全${o.total.toLocaleString()}口</span></div>
+        ${minGuarantee(o) ? `<p class="minguar"><b>最低保証</b><span>${esc(minGuarantee(o))}</span></p>` : ''}
+        ${prizeGroups(o).map(g => `<section class="lg fx-${g.fx}">
+          <h4>${fxRankTag(g.rank, g.fx)}${showQty ? `<span class="small muted">${g.items.reduce((s, p) => s + (p.qty || 0), 0)}口（${o.total ? (g.items.reduce((s, p) => s + (p.qty || 0), 0) / o.total * 100).toFixed(1) : 0}%）</span>` : ''}</h4>
+          <div class="lgrid ${g.fx >= 3 ? 'big' : ''}">${g.items.map(p => lineupCard(p)).join('')}</div>
+        </section>`).join('')}
+        ${lastOne ? `<section class="lg fx-lo"><h4>${fxRankTag('', 0, true)}<span class="small muted">最後の1口を引いた方に追加でプレゼント</span></h4><div class="lgrid">${lineupCard(lastOne)}</div></section>` : ''}
+        <p class="small muted" style="margin:10px 0 0">${F_ON.coins ? '「排出済み」の賞はすでにすべて出ています。' : '※掲載の景品がすでに排出済みの場合があります。'}商品画像はイメージです。${showValue ? '参考価格は当店の目安です。' : ''}</p>
+        ${expect ? `<p class="small muted" style="margin:4px 0 0">1口あたりの参考価格の平均 ${yen(expect)}</p>` : ''}
       </div>
       ${o.recent.length ? `<div class="box"><h3>最近の当選</h3><div class="recent">${o.recent.map(r => `<div class="small"><span class="tag rank ${r.is_last_one ? 'lo' : ''}">${esc(r.is_last_one ? 'ラストワン' : r.rank)}</span> ${esc(r.name)} <span class="muted">${jst(r.revealed_at)}</span></div>`).join('')}</div></div>` : ''}`;
     const add = $('#oadd');
