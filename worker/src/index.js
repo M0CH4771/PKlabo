@@ -25,7 +25,8 @@ function cors(env, req) {
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Key,Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Key,X-Admin-Session,Authorization',
+    'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
 }
