@@ -69,7 +69,7 @@ export async function boardOf(env, o) {
       WHERE d.oripa_id = ? AND d.slot IS NOT NULL ORDER BY d.slot`
   ).bind(o.id).all();
   const tiers = await prizeTiers(env, [o.id]);
-  return { size: o.total, opened: results.map(({ prize_id, ...r }) => ({ ...r, tier: tiers.get(prize_id) || 'normal' })) };
+  return { size: o.total, opened: results.map(({ prize_id, ...r }) => ({ ...r, fx: tiers.get(prize_id) || 0 })) };
 }
 
 // 注文用：オリパの価格チェック
@@ -164,33 +164,43 @@ export async function releaseOrderDraws(env, orderId) {
   await env.DB.prepare('DELETE FROM oripa_draws WHERE order_id = ?').bind(orderId).run();
 }
 
-// 開封演出の強さ：top＝いちばん高い賞 / high＝高めで数が少ない賞 / lo＝ラストワン / normal＝それ以外
-export function tierOf(prizes) {
+// 開封演出の段階：0=なし 1=青 2=赤 3=金 4=虹。
+// 賞ごとに設定があればそれ、なければ賞の名前から（SS賞=虹 S賞=金 A賞=赤 B賞=青、ラストワン賞=金）、
+// 名前で決まらないときは参考価格から（いちばん高い賞=金、高めで少ない賞=赤）
+export function fxOf(prizes) {
   const t = new Map();
   const pool = prizes.filter(p => !p.is_last_one);
   const total = pool.reduce((s, p) => s + p.qty, 0) || 1;
   const vals = pool.map(p => p.value);
   const max = Math.max(0, ...vals), min = Math.min(...vals);
-  for (const p of prizes) {
-    if (p.is_last_one) t.set(p.id, 'lo');
-    else if (max > min && p.value === max) t.set(p.id, 'top');
-    else if (p.value > min && (p.qty / total <= 0.2 || p.value >= min * 3)) t.set(p.id, 'high');
-    else t.set(p.id, 'normal');
-  }
+  for (const p of prizes) t.set(p.id, fxLevel(p, { total, max, min }));
   return t;
+}
+export function fxLevel(p, { total, max, min }) {
+  if (p.fx !== null && p.fx !== undefined && p.fx !== '') return Math.max(0, Math.min(4, Number(p.fx) || 0));
+  const r = String(p.rank || '').normalize('NFKC').toUpperCase().replace(/\s/g, '');
+  if (/^SS/.test(r) || /^(SSR|UR)/.test(r)) return 4;
+  if (/^S/.test(r)) return 3;
+  if (/^A/.test(r)) return 2;
+  if (/^B/.test(r)) return 1;
+  if (p.is_last_one) return 3;
+  if (/^[C-Z]/.test(r)) return 0;
+  if (max > min && p.value === max) return 3;
+  if (p.value > min && (p.qty / total <= 0.2 || p.value >= min * 3)) return 2;
+  return 0;
 }
 export async function prizeTiers(env, oripaIds) {
   const ids = [...new Set(oripaIds)];
   if (!ids.length) return new Map();
-  const { results } = await env.DB.prepare(`SELECT id, oripa_id, qty, value, is_last_one FROM oripa_prizes WHERE oripa_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+  const { results } = await env.DB.prepare(`SELECT id, oripa_id, rank, qty, value, is_last_one, fx FROM oripa_prizes WHERE oripa_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
   const all = new Map();
-  ids.forEach(oid => tierOf(results.filter(p => p.oripa_id === oid)).forEach((v, k) => all.set(k, v)));
+  ids.forEach(oid => fxOf(results.filter(p => p.oripa_id === oid)).forEach((v, k) => all.set(k, v)));
   return all;
 }
 // お客様に返す当選内容（参考価格は公開設定のときだけ）
 export function publicDraw(env, d, tiers) {
   const { value, prize_id, ...rest } = d;
-  return { ...rest, tier: tiers.get(prize_id) || 'normal', ...(cfg(env).oripa.showValue ? { value } : {}) };
+  return { ...rest, fx: tiers.get(prize_id) || 0, ...(cfg(env).oripa.showValue ? { value } : {}) };
 }
 
 export async function orderDraws(env, orderId, reveal) {
@@ -213,6 +223,7 @@ function cleanPrize(p) {
   return {
     id: int(p.id) || null, rank: str(p.rank, 30), name: str(p.name, 200), image_url: str(p.image_url, 1000),
     qty: Math.max(0, int(p.qty)), value: Math.max(0, int(p.value)), is_last_one: truthy(p.is_last_one), sort: int(p.sort),
+    fx: p.fx === null || p.fx === undefined || p.fx === '' || p.fx === 'auto' ? null : Math.max(0, Math.min(4, int(p.fx))),
   };
 }
 
@@ -255,8 +266,8 @@ export async function adminOripaRoutes(req, env, path) {
       ).bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, meta.allin_under).run();
       const oid = r.meta.last_row_id;
       if (prizes.length) await env.DB.batch(prizes.map(p => env.DB.prepare(
-        'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(oid, p.rank, p.name, p.image_url, p.is_last_one ? 1 : p.qty, p.is_last_one ? 1 : p.qty, p.value, p.is_last_one, p.sort)));
+        'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort, fx) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(oid, p.rank, p.name, p.image_url, p.is_last_one ? 1 : p.qty, p.is_last_one ? 1 : p.qty, p.value, p.is_last_one, p.sort, p.fx)));
       return json({ id: oid }, 201);
     }
 
@@ -275,7 +286,7 @@ export async function adminOripaRoutes(req, env, path) {
         env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, allin_under=?, updated_at=datetime('now') WHERE id=?`)
           .bind(meta.title, meta.image_url, meta.description, cur.price, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.allin_under, id),
         // 販売開始後は形式（ボード形式かどうか）も変えない
-        ...prizes.map(p => env.DB.prepare('UPDATE oripa_prizes SET rank=?, name=?, image_url=?, value=?, sort=? WHERE id=? AND oripa_id=?').bind(p.rank, p.name, p.image_url, p.value, p.sort, p.id, id)),
+        ...prizes.map(p => env.DB.prepare('UPDATE oripa_prizes SET rank=?, name=?, image_url=?, value=?, sort=?, fx=? WHERE id=? AND oripa_id=?').bind(p.rank, p.name, p.image_url, p.value, p.sort, p.fx, p.id, id)),
       ]);
       const notes = [cur.price !== meta.price && '価格', (cur.pick_mode ? 1 : 0) !== meta.pick_mode && '形式（パックを選んで開ける）'].filter(Boolean);
       return json({ id, note: notes.length ? `販売開始後のため${notes.join('・')}は変更していません` : undefined });
@@ -285,8 +296,8 @@ export async function adminOripaRoutes(req, env, path) {
         .bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, meta.allin_under, id),
       env.DB.prepare('DELETE FROM oripa_prizes WHERE oripa_id = ?').bind(id),
       ...prizes.map(p => env.DB.prepare(
-        'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(id, p.rank, p.name, p.image_url, p.is_last_one ? 1 : p.qty, p.is_last_one ? 1 : p.qty, p.value, p.is_last_one, p.sort)),
+        'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort, fx) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(id, p.rank, p.name, p.image_url, p.is_last_one ? 1 : p.qty, p.is_last_one ? 1 : p.qty, p.value, p.is_last_one, p.sort, p.fx)),
     ]);
     return json({ id });
   }

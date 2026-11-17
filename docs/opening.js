@@ -1,6 +1,7 @@
 // オリパの開封演出（ショップと管理画面の試し引きで共通）
 // パックを破る → カードが出てくる → 「自動でめくる」か「自分でめくる」を選ぶ
-// 当たりはめくる前に裏面が光って揺れる（確定演出）。いちばん上の賞は中央で大きく開封
+// B賞以上は中央で大きくなり、青 → 赤（A賞）→ 金（S賞）→ 虹（SS賞）と段階的に「昇格」してからめくれる。
+// どの段階でも止まるまでの間は同じ長さなので、どこまで行くかは最後まで分からない
 (() => {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -36,12 +37,17 @@
     slide() { noise(0, 0.25, 0.07, 1200); },
     deal() { noise(0, 0.05, 0.06, 5000); },
     flip() { noise(0, 0.06, 0.12, 4200); tone(880, 0, 0.08, 'sine', 0.04); },
-    tick(n) { tone(520 + n * 140, 0, 0.12, 'square', 0.035); },
-    high() { [659, 784, 988, 1319].forEach((f, i) => tone(f, i * 0.07, 0.35, 'triangle', 0.09)); },
-    top() {
+    // 溜め：段階が上がるほど高く速く
+    charge(lv) { for (let k = 0; k < 5; k++) tone(330 * Math.pow(1.26, lv - 1) * (1 + k * 0.06), k * 0.17, 0.12, 'square', 0.03); },
+    // 昇格の瞬間
+    up(lv) { noise(0, 0.35, 0.16, 900 + lv * 500); const b = [392, 523, 659, 784][lv - 1] || 784; [b, b * 1.25, b * 1.5, b * 2].forEach((f, i) => tone(f, i * 0.05, 0.3, 'triangle', 0.08)); },
+    reveal(lv) {
+      if (lv <= 1) { [784, 988, 1175].forEach((f, i) => tone(f, i * 0.06, 0.3, 'triangle', 0.07)); return; }
+      if (lv === 2) { [659, 784, 988, 1319].forEach((f, i) => tone(f, i * 0.07, 0.4, 'triangle', 0.09)); return; }
       [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.5, 'triangle', 0.1));
       [1047, 1319, 1568].forEach(f => tone(f, 0.42, 1.4, 'sawtooth', 0.035));
       [523, 659, 784].forEach(f => tone(f, 0.42, 1.4, 'triangle', 0.08));
+      if (lv >= 4) [2093, 2637, 3136, 2637, 3136, 4186].forEach((f, i) => tone(f, 0.9 + i * 0.08, 0.25, 'sine', 0.05));
     },
   };
 
@@ -49,7 +55,8 @@
   function confetti(canvas, x, y, power) {
     const c = canvas.getContext('2d'), dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const colors = ['#e3262f', '#ffe14d', '#ffffff', '#1f4e99', '#ffb800'];
+    const colors = power === 'rainbow' ? ['#ff3b5c', '#ff9f1a', '#ffe14d', '#3ddc84', '#2fb7ff', '#8a5cff', '#ffffff'] : ['#e3262f', '#ffe14d', '#ffffff', '#1f4e99', '#ffb800'];
+    if (power === 'rainbow') power = 'big';
     const n = power === 'big' ? 160 : 50;
     const parts = Array.from({ length: n }, () => {
       const a = Math.random() * Math.PI * 2, v = (power === 'big' ? 7 : 4.5) * (0.4 + Math.random());
@@ -71,26 +78,37 @@
     requestAnimationFrame(step);
   }
 
-  // 賞品リストから演出の強さを決める（管理画面の試し引き用。ショップではサーバーが決める）
+  // 演出の段階（0=なし 1=青 2=赤 3=金 4=虹）。サーバーと同じ決め方（管理画面の試し引き用）
+  function fxLevel(p, { total, max, min }) {
+    if (p.fx !== null && p.fx !== undefined && p.fx !== '' && p.fx !== 'auto') return Math.max(0, Math.min(4, Number(p.fx) || 0));
+    const r = String(p.rank || '').normalize('NFKC').toUpperCase().replace(/\s/g, '');
+    if (/^SS/.test(r) || /^(SSR|UR)/.test(r)) return 4;
+    if (/^S/.test(r)) return 3;
+    if (/^A/.test(r)) return 2;
+    if (/^B/.test(r)) return 1;
+    if (p.is_last_one) return 3;
+    if (/^[C-Z]/.test(r)) return 0;
+    const v = +p.value || 0;
+    if (max > min && v === max) return 3;
+    if (v > min && ((+p.qty || 0) / total <= 0.2 || v >= min * 3)) return 2;
+    return 0;
+  }
   function tiers(prizes) {
     const t = new Map();
     const pool = prizes.filter(p => !p.is_last_one);
     const total = pool.reduce((s, p) => s + (+p.qty || 0), 0) || 1;
     const vals = pool.map(p => +p.value || 0);
     const max = Math.max(0, ...vals), min = Math.min(...vals);
-    for (const p of prizes) {
-      const v = +p.value || 0;
-      t.set(p, p.is_last_one ? 'lo' : max > min && v === max ? 'top' : v > min && ((+p.qty || 0) / total <= 0.2 || v >= min * 3) ? 'high' : 'normal');
-    }
+    for (const p of prizes) t.set(p, fxLevel(p, { total, max, min }));
     return t;
   }
 
-  const ORDER = { normal: 0, high: 1, lo: 2, top: 3 };
+  const lvOf = d => Math.max(0, Math.min(4, Number(d.fx) || 0));
   const label = d => d.is_last_one ? 'ラストワン賞' : (d.rank || '');
   const backHtml = (logo, slot) => `<div class="op-back"><i class="op-frame"></i><span class="op-emb"><b>${esc(logo)}</b></span>${slot ? `<em class="op-no">${slot}番</em>` : ''}</div>`;
 
   function cardHtml(d, i, logo) {
-    return `<div class="op-card t-${d.tier || 'normal'}" data-i="${i}"><div class="op-in">
+    return `<div class="op-card fx-${lvOf(d)}" data-i="${i}"><div class="op-in">
       ${backHtml(logo, d.slot)}
       <div class="op-front">${d.image_url ? `<img src="${esc(d.image_url)}" alt="">` : '<div class="op-noimg"></div>'}
         <span class="op-rank">${esc(label(d))}</span><b>${esc(d.name)}</b>${d.slot ? `<em class="op-no">${d.slot}番</em>` : ''}</div>
@@ -180,36 +198,24 @@
       $('.op-foot .btn')?.focus();
     };
 
-    // 1枚めくる（当たりは確定演出つき）
+    // 1枚めくる（B賞以上は中央で昇格演出）
     let busy = false;
     async function reveal(i) {
       const c = cards()[i];
       if (!c || c.classList.contains('flip')) return;
-      const tier = draws[i].tier || 'normal';
       if (skip) { c.classList.add('flip', 'shown'); return; }
       busy = true;
       c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      if (tier === 'normal') {
-        c.classList.add('flip', 'shown'); sfx.flip();
-      } else if (tier === 'top') {
-        await spotlight(draws[i], c);
-      } else {
-        c.classList.add('tease');
-        for (let k = 0; k < 3; k++) { sfx.tick(k); await sleep(230); }
-        c.classList.remove('tease'); c.classList.add('flip', 'shown');
-        sfx.high();
-        const r = c.getBoundingClientRect();
-        if (!skip) confetti(fx, r.left + r.width / 2, r.top + r.height / 2, 'small');
-        await sleep(450);
-      }
+      if (!lvOf(draws[i])) { c.classList.add('flip', 'shown'); sfx.flip(); }
+      else await spotlight(draws[i], c);
       busy = false;
     }
     const allOpen = () => cards().every(c => c.classList.contains('flip'));
     const autoRest = async () => {
       const order = cards().map((c, i) => i).filter(i => !cards()[i].classList.contains('flip'))
-        .sort((a, b) => ORDER[draws[a].tier || 'normal'] - ORDER[draws[b].tier || 'normal'] || a - b);
-      const normals = order.filter(i => (draws[i].tier || 'normal') === 'normal').length;
-      for (const i of order) { await reveal(i); if ((draws[i].tier || 'normal') === 'normal') await sleep(normals > 6 ? 90 : 170); }
+        .sort((a, b) => lvOf(draws[a]) - lvOf(draws[b]) || a - b);
+      const normals = order.filter(i => !lvOf(draws[i])).length;
+      for (const i of order) { await reveal(i); if (!lvOf(draws[i])) await sleep(normals > 6 ? 90 : 170); }
     };
 
     (async () => {
@@ -267,25 +273,44 @@
       finish();
     })();
 
-    // いちばん上の賞：中央で大きく、光の中で開封
+    // 昇格演出：中央で大きく → 青から始まり、その賞の段階まで 赤 → 金 → 虹 と上がってからめくる
     async function spotlight(d, gridCard) {
+      const lv = Math.max(1, lvOf(d));
       const spot = $('.op-spot');
-      spot.innerHTML = `<div class="op-rays"></div>${cardHtml(d, -1, logo)}<div class="op-banner"><span>${esc(label(d))}</span><b>${esc(d.name)}</b></div>`;
+      spot.innerHTML = `<div class="op-rays"></div><div class="op-flash"></div>${cardHtml(d, -1, logo)}<div class="op-banner"><span>${esc(label(d))}</span><b>${esc(d.name)}</b></div>`;
       spot.hidden = false;
       ov.classList.add('focus');
+      gridCard.classList.add('away');
       const big = spot.querySelector('.op-card');
-      await sleep(350);
-      big.classList.add('tease');
-      for (let k = 0; k < 4; k++) { sfx.tick(k + 1); await sleep(260); }
-      big.classList.remove('tease');
+      await sleep(420);
+      const hold = async L => {
+        spot.dataset.lv = L;
+        sfx.charge(L);
+        await sleep(1050);   // どの段階でも同じ長さ（ここで止まるか、まだ上がるかは分からない）
+      };
+      await hold(1);
+      for (let L = 2; L <= lv; L++) {
+        if (skip) break;
+        spot.classList.remove('up'); void spot.offsetWidth; spot.classList.add('up');
+        sfx.up(L);
+        try { navigator.vibrate && navigator.vibrate(L >= 4 ? [40, 30, 40, 30, 80] : 50); } catch { /* 非対応 */ }
+        await hold(L);
+      }
+      spot.dataset.lv = lv;
       spot.classList.add('lit');
       big.classList.add('flip', 'shown');
-      sfx.top();
-      try { navigator.vibrate && navigator.vibrate([60, 40, 120]); } catch { /* 非対応 */ }
-      if (!skip) { confetti(fx, innerWidth / 2, innerHeight * 0.42, 'big'); setTimeout(() => !skip && confetti(fx, innerWidth / 2, innerHeight * 0.42, 'big'), 380); }
-      await waitTap(2600);
-      spot.hidden = true; spot.classList.remove('lit'); spot.innerHTML = '';
+      sfx.reveal(lv);
+      try { lv >= 3 && navigator.vibrate && navigator.vibrate([60, 40, 140]); } catch { /* 非対応 */ }
+      if (!skip && lv >= 2) {
+        const kind = lv >= 4 ? 'rainbow' : lv >= 3 ? 'big' : 'small';
+        confetti(fx, innerWidth / 2, innerHeight * 0.42, kind);
+        if (lv >= 3) setTimeout(() => !skip && confetti(fx, innerWidth / 2, innerHeight * 0.42, kind), 380);
+        if (lv >= 4) setTimeout(() => !skip && confetti(fx, innerWidth / 2, innerHeight * 0.3, kind), 800);
+      }
+      await waitTap(lv >= 3 ? 2800 : 1800);
+      spot.hidden = true; spot.classList.remove('lit', 'up'); delete spot.dataset.lv; spot.innerHTML = '';
       ov.classList.remove('focus');
+      gridCard.classList.remove('away');
       gridCard.classList.add('flip', 'shown');
     }
 

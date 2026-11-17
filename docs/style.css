@@ -544,36 +544,61 @@ html.op-lock, html.op-lock body { overflow: hidden; }
 .op-front::after { content: ""; position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .op-card.shown .op-front::after { animation: op-flash .5s .2s ease-out; }
 @keyframes op-flash { 0% { opacity: .9; } 100% { opacity: 0; } }
-/* 当たり：めくる前に裏面の色が変わって揺れる（確定演出） */
-.op-card.t-high { --glow: #ff4b55; } .op-card.t-lo { --glow: #ffd23a; } .op-card.t-top { --glow: #ffd23a; }
-.op-card.tease .op-back { animation: op-shake .23s linear infinite; box-shadow: 0 0 22px var(--glow), 0 0 50px var(--glow); }
-.op-card.t-high.tease .op-back { background: radial-gradient(circle at 50% 50%, rgba(255,255,255,.25), transparent 60%), repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.12) 0 6deg, transparent 6deg 12deg), linear-gradient(160deg, #e3262f, #8f0f16); }
-.op-card.t-top.tease .op-back, .op-card.t-lo.tease .op-back { background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.25) 0 6deg, transparent 6deg 12deg), linear-gradient(115deg, #b8860b 0%, #ffe680 25%, #c9971a 45%, #fff3b0 60%, #b8860b 100%); background-size: auto, 220% 100%; animation: op-shake .23s linear infinite, op-sheen 1s linear infinite; }
-.op-card.tease .op-frame { border-color: #fff; }
-.op-card.shown .op-front { box-shadow: 0 0 0 3px var(--glow, transparent), 0 0 26px var(--glow, transparent); }
-.op-card.t-normal.shown .op-front { box-shadow: none; }
-/* 当たりのカードはホログラムの光が流れる */
-.op-card.t-high.shown .op-front img, .op-card.t-top.shown .op-front img, .op-card.t-lo.shown .op-front img { position: relative; }
-.op-card:is(.t-high, .t-top, .t-lo).shown .op-front::before { content: ""; position: absolute; left: 6px; right: 6px; top: 6px; aspect-ratio: 5 / 7; border-radius: 4.5% / 3.2%; pointer-events: none; z-index: 1; mix-blend-mode: overlay;
+.op-card.away { visibility: hidden; }
+
+/* 段階の色：1=青 2=赤 3=金 4=虹 */
+.op-card.fx-1 { --lvc: #2f7bff; } .op-card.fx-2 { --lvc: #ff2f3f; } .op-card.fx-3 { --lvc: #ffd23a; } .op-card.fx-4 { --lvc: #ffffff; }
+.op-spot { --lvc: #2f7bff; }
+.op-spot[data-lv="2"] { --lvc: #ff2f3f; } .op-spot[data-lv="3"] { --lvc: #ffd23a; } .op-spot[data-lv="4"] { --lvc: #ffffff; }
+/* めくったあとの枠の光とホログラム */
+.op-card:is(.fx-1, .fx-2, .fx-3).shown .op-front { box-shadow: 0 0 0 3px var(--lvc), 0 0 26px var(--lvc); }
+.op-card.fx-4.shown .op-front { box-shadow: 0 0 26px #fff; }
+.op-card { position: relative; }
+.op-card.fx-4.shown::before { content: ""; position: absolute; inset: -4px; border-radius: 10px; background: conic-gradient(#ff3b5c, #ff9f1a, #ffe14d, #3ddc84, #2fb7ff, #8a5cff, #ff3b5c); animation: op-hue 2s linear infinite; box-shadow: 0 0 30px rgba(255,255,255,.5); }
+/* A賞以上は、めくったあともカード画像にホログラムの光が流れる */
+.op-card:is(.fx-2, .fx-3, .fx-4).shown .op-front::before { content: ""; position: absolute; left: 6px; right: 6px; top: 6px; aspect-ratio: 5 / 7; border-radius: 4.5% / 3.2%; pointer-events: none; z-index: 1; mix-blend-mode: overlay;
   background: linear-gradient(115deg, transparent 30%, rgba(255, 80, 130, .8) 40%, rgba(255, 230, 90, .8) 47%, rgba(80, 230, 200, .8) 54%, rgba(110, 140, 255, .8) 61%, transparent 70%); background-size: 300% 100%; animation: op-holo2 2.6s linear infinite; }
 @keyframes op-holo2 { from { background-position: 100% 0; } to { background-position: -200% 0; } }
-.op-card.t-high.shown .op-rank { background: var(--accent); }
-.op-card.t-lo.shown .op-rank, .op-card.t-top.shown .op-rank { background: var(--pop); color: var(--ink); }
+.op-card.fx-1.shown .op-rank { background: #2f7bff; }
+.op-card.fx-2.shown .op-rank { background: #ff2f3f; }
+.op-card.fx-3.shown .op-rank { background: var(--pop); color: var(--ink); }
+.op-card.fx-4.shown .op-rank { background: linear-gradient(90deg, #ff3b5c, #ffe14d, #3ddc84, #2fb7ff, #8a5cff); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
 @keyframes op-shake { 0%, 100% { transform: translate(0, 0) rotate(0); } 25% { transform: translate(-3px, 1px) rotate(-1.5deg); } 75% { transform: translate(3px, -1px) rotate(1.5deg); } }
-@keyframes op-sheen { to { background-position: 0 0, -220% 0; } }
+@keyframes op-hue { to { filter: hue-rotate(360deg); } }
+@keyframes op-sheen { to { background-position: -220% 0; } }
 
-/* いちばん上の賞：中央で開封 */
-.op-ov.focus .op-grid { filter: brightness(.3) blur(2px); transition: filter .3s; }
+/* 昇格演出：中央の大きなカード */
+.op-ov.focus .op-grid { filter: brightness(.25) blur(3px); transition: filter .3s; }
 .op-spot { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; align-content: center; gap: 16px; pointer-events: none; }
-.op-spot .op-card { width: min(260px, 64vw); animation: op-rise .45s cubic-bezier(.2,.9,.3,1.15) both; }
+.op-spot .op-card { width: min(270px, 66vw); animation: op-rise .45s cubic-bezier(.2,.9,.3,1.15) both; }
 @keyframes op-rise { from { transform: scale(.4) translateY(30vh); opacity: 0; } }
+.op-spot[data-lv] .op-card:not(.flip) .op-back { box-shadow: 0 0 30px var(--lvc), 0 0 90px var(--lvc); border-color: var(--lvc); animation: op-shake var(--shk, .26s) linear infinite; transition: background .25s, box-shadow .25s; }
+.op-spot[data-lv="1"] .op-card:not(.flip) .op-back { --shk: .3s; background: radial-gradient(circle, rgba(255,255,255,.25), transparent 60%), repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.12) 0 6deg, transparent 6deg 12deg), linear-gradient(160deg, #3d8bff, #0f3a9c); }
+.op-spot[data-lv="2"] .op-card:not(.flip) .op-back { --shk: .22s; background: radial-gradient(circle, rgba(255,255,255,.25), transparent 60%), repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.12) 0 6deg, transparent 6deg 12deg), linear-gradient(160deg, #ff3d4a, #8f0f16); }
+.op-spot[data-lv="3"] .op-card:not(.flip) .op-back { --shk: .17s; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.25) 0 6deg, transparent 6deg 12deg), linear-gradient(115deg, #b8860b 0%, #ffe680 25%, #c9971a 45%, #fff3b0 60%, #b8860b 100%); background-size: auto, 220% 100%; animation: op-shake .17s linear infinite, op-sheen2 1s linear infinite; }
+.op-spot[data-lv="4"] .op-card:not(.flip) .op-back { --shk: .12s; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.3) 0 6deg, transparent 6deg 12deg), conic-gradient(#ff3b5c, #ff9f1a, #ffe14d, #3ddc84, #2fb7ff, #8a5cff, #ff3b5c); box-shadow: 0 0 40px #fff, 0 0 110px #8a5cff; animation: op-shake .12s linear infinite, op-hue 1.2s linear infinite; }
+.op-spot[data-lv] .op-card:not(.flip) .op-frame { border-color: #fff; }
+.op-spot[data-lv="4"] .op-card:not(.flip) .op-emb { background: #fff; } .op-spot[data-lv="4"] .op-card:not(.flip) .op-emb b { color: var(--ink); }
+@keyframes op-sheen2 { to { background-position: 0 0, -220% 0; } }
+/* 後ろの光：段階が上がるほど強く */
 .op-rays { position: absolute; left: 50%; top: 45%; width: 160vmax; height: 160vmax; transform: translate(-50%, -50%); opacity: 0; transition: opacity .4s;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 225, 77, .22) 0deg 7deg, transparent 7deg 18deg); -webkit-mask: radial-gradient(circle, #000 0%, transparent 55%); mask: radial-gradient(circle, #000 0%, transparent 55%); }
-.op-spot.lit .op-rays { opacity: 1; animation: op-spin 14s linear infinite; }
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--lvc) 35%, transparent) 0deg 7deg, transparent 7deg 18deg);
+  -webkit-mask: radial-gradient(circle, #000 0%, transparent 55%); mask: radial-gradient(circle, #000 0%, transparent 55%); animation: op-spin 14s linear infinite; }
+.op-spot[data-lv="1"] .op-rays { opacity: .35; } .op-spot[data-lv="2"] .op-rays { opacity: .6; animation-duration: 9s; }
+.op-spot[data-lv="3"] .op-rays { opacity: .85; animation-duration: 6s; }
+.op-spot[data-lv="4"] .op-rays { opacity: 1; animation: op-spin 4s linear infinite, op-hue 2s linear infinite; background: repeating-conic-gradient(from 0deg, rgba(255, 90, 120, .45) 0deg 7deg, transparent 7deg 18deg); }
 @keyframes op-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+/* 昇格した瞬間のフラッシュ */
+.op-flash { position: fixed; inset: 0; background: var(--lvc); opacity: 0; mix-blend-mode: screen; }
+.op-spot.up .op-flash { animation: op-upflash .5s ease-out; }
+.op-spot.up .op-card { animation: op-bump .35s ease-out; }
+@keyframes op-upflash { 0% { opacity: .85; } 100% { opacity: 0; } }
+@keyframes op-bump { 40% { transform: scale(1.08); } }
+/* 賞名 */
 .op-banner { position: relative; display: grid; justify-items: center; gap: 4px; text-align: center; opacity: 0; transform: scale(2.2); }
 .op-spot.lit .op-banner { animation: op-stamp .4s .25s cubic-bezier(.3,1.5,.5,1) forwards; }
-.op-banner span { font-family: var(--f-pop); font-size: 36px; line-height: 1.1; color: var(--pop); text-shadow: 0 3px 0 #b8860b, 0 0 24px rgba(255, 210, 58, .6); }
+.op-banner span { font-family: var(--f-pop); font-size: 38px; line-height: 1.1; color: var(--lvc); text-shadow: 0 3px 0 rgba(0,0,0,.35), 0 0 24px var(--lvc); }
+.op-spot[data-lv="4"] .op-banner span { color: transparent; background: linear-gradient(90deg, #ff3b5c, #ff9f1a, #ffe14d, #3ddc84, #2fb7ff, #8a5cff, #ff3b5c); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; text-shadow: none; filter: drop-shadow(0 0 12px rgba(255,255,255,.6)); animation: op-sheen 1.5s linear infinite; }
 .op-banner b { font-size: 16px; max-width: 86vw; }
 @keyframes op-stamp { to { opacity: 1; transform: none; } }
 
@@ -585,7 +610,7 @@ html.op-lock, html.op-lock body { overflow: hidden; }
 .op-acts .btn { flex: 1; max-width: 240px; }
 .op-dock .btn:not(.primary) { background: transparent; color: #fff; border-color: rgba(255,255,255,.45); }
 @media (prefers-reduced-motion: reduce) {
-  .op-glow, .op-pack.in, .op-hint, .op-card.deal, .op-card.tease .op-back, .op-spot.lit .op-rays, .op-pack-body::after, .op-front::before { animation: none !important; }
+  .op-glow, .op-pack.in, .op-hint, .op-card.deal, .op-spot .op-back, .op-rays, .op-pack-body::after, .op-front::before, .op-flash, .op-spot .op-card { animation: none !important; }
   .op-pack { opacity: 1; transform: none; }
   .op-in { transition: none; }
 }
@@ -608,10 +633,10 @@ html.op-lock, html.op-lock body { overflow: hidden; }
 .bt.open img { width: 100%; height: 100%; object-fit: cover; opacity: .9; }
 .bt.open i { inset: auto 0 0 auto; display: block; padding: 0 3px; font-size: 9px; background: rgba(255,255,255,.85); border-top-left-radius: 2px; }
 .bt-r { position: absolute; top: 2px; left: 2px; z-index: 1; font-size: 9.5px; font-weight: 700; line-height: 1.4; background: var(--ink); color: #fff; padding: 0 3px; border-radius: 2px; max-width: calc(100% - 4px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.bt.open.t-high { box-shadow: inset 0 0 0 2px var(--accent); }
-.bt.open.t-high .bt-r { background: var(--accent); }
-.bt.open.t-top, .bt.open.t-lo { box-shadow: inset 0 0 0 2px #e0a800; }
-.bt.open.t-top .bt-r, .bt.open.t-lo .bt-r { background: var(--pop); color: var(--ink); }
+.bt.open.fx-1 { box-shadow: inset 0 0 0 2px #2f7bff; } .bt.open.fx-1 .bt-r { background: #2f7bff; }
+.bt.open.fx-2 { box-shadow: inset 0 0 0 2px #ff2f3f; } .bt.open.fx-2 .bt-r { background: #ff2f3f; }
+.bt.open.fx-3 { box-shadow: inset 0 0 0 2px #e0a800; } .bt.open.fx-3 .bt-r { background: var(--pop); color: var(--ink); }
+.bt.open.fx-4 { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #8a5cff; } .bt.open.fx-4 .bt-r { background: linear-gradient(90deg, #ff3b5c, #ffe14d, #3ddc84, #2fb7ff, #8a5cff); }
 .pickbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 14px max(10px, env(safe-area-inset-bottom)); background: #fff; border-top: 3px solid var(--ink); font-size: 14px; }
 .pickbar span { flex: 1; }
 .pickbar b { font-family: var(--f-pop); font-weight: 400; color: var(--accent); font-size: 17px; }

@@ -202,7 +202,8 @@ CREATE TABLE IF NOT EXISTS oripa_prizes (
   remaining    INTEGER NOT NULL,
   value        INTEGER NOT NULL DEFAULT 0, -- 参考価格
   is_last_one  INTEGER NOT NULL DEFAULT 0, -- 1=ラストワン賞（最後の1口を引いた人に追加でプレゼント）
-  sort         INTEGER NOT NULL DEFAULT 0
+  sort         INTEGER NOT NULL DEFAULT 0,
+  fx           INTEGER                     -- 開封演出：0=なし 1=青 2=赤 3=金 4=虹 / NULL=賞の名前から自動（B賞=青 A賞=赤 S賞=金 SS賞=虹）
 );
 CREATE INDEX IF NOT EXISTS idx_prizes_oripa ON oripa_prizes(oripa_id);
 

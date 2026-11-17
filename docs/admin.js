@@ -520,6 +520,7 @@
       if (k === 'banner') return o.image_url;
       if (k === 'description') return o.description;
       if (k === 'is_last_one') return p.is_last_one ? '○' : '';
+      if (k === 'fx') return p.fx === null || p.fx === undefined ? '' : FX_NAME[p.fx];
       if (['product_id', 'card_no', 'condition'].includes(k)) return '';
       return p[k];
     })))]);
@@ -543,9 +544,11 @@
   }
 
 
+  const FX_OPTS = [['', '自動'], ['0', 'なし'], ['1', '青'], ['2', '赤'], ['3', '金'], ['4', '虹']];
+  const FX_NAME = { 0: 'なし', 1: '青', 2: '赤', 3: '金', 4: '虹' };
   const unitPrice = n => settings?.features?.coins ? `${Number(n).toLocaleString()}${esc(settings.coin.name)}` : yen(n);
   const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['pick_mode', 'パックを選ぶ'], ['allin_under', '残り全部引く'], ['banner', 'バナー画像URL'], ['description', '説明'],
-    ['rank', 'ランク'], ['name', '賞品名'], ['qty', '封入数'], ['value', '参考価格'], ['image_url', '賞品画像URL'], ['is_last_one', 'ラストワン'], ['product_id', '商品ID'], ['card_no', '型番'], ['condition', '商品の状態']];
+    ['rank', 'ランク'], ['name', '賞品名'], ['qty', '封入数'], ['value', '参考価格'], ['image_url', '賞品画像URL'], ['is_last_one', 'ラストワン'], ['fx', '演出'], ['product_id', '商品ID'], ['card_no', '型番'], ['condition', '商品の状態']];
   const ORIPA_ALIAS = Object.fromEntries([...ORIPA_COLS.map(([k, l]) => [l, k]), ...ORIPA_COLS.map(([k]) => [k, k]),
     ['タイトル', 'title'], ['価格', 'price'], ['賞', 'rank'], ['枚数', 'qty'], ['口数', 'qty'], ['画像URL', 'image_url'], ['LO', 'is_last_one'], ['状態（商品）', 'condition']]);
 
@@ -628,7 +631,7 @@
         ['', '', '', '', '', '', '', 'A賞', '', 2, '', '', '', pick.id || '', '', ''],
         ['', '', '', '', '', '', '', 'B賞', '', 3, '', '', '', '', pick.card_no || '201/165', pick.condition || 'A'],
         ['', '', '', '', '', '', '', 'C賞', 'SAR 1枚', 94, 1200, '', '', '', '', ''],
-        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']].map((r, i) => i === 0 ? r : [...r.slice(0, 5), '', i === 1 ? 10 : '', ...r.slice(5)]));
+        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']].map((r, i) => i === 0 ? r : [...r.slice(0, 5), '', i === 1 ? 10 : '', ...r.slice(5)]).map((r, i) => i === 0 ? r : [...r.slice(0, 15), '', ...r.slice(15)]));
     };
     $('#ofile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
@@ -660,6 +663,7 @@
         const lo = /^(1|true|○|〇|はい|yes|lo)$/i.test(o.is_last_one || '') || /ラストワン|last/i.test(o.rank || '');
         g.prizes.push({
           rank: o.rank || '', name: o.name || base.name || '', image_url: o.image_url || base.image_url || '',
+          fx: (() => { const f = String(o.fx || '').trim(); if (!f || f === '自動') return null; const k = { なし: 0, 青: 1, 赤: 2, 金: 3, 虹: 4 }[f]; return k !== undefined ? k : /^[0-4]$/.test(f) ? +f : null; })(),
           qty: lo ? 1 : (o.qty === '' || o.qty === undefined ? 1 : +o.qty), value: o.value !== '' && o.value !== undefined ? +o.value : (base.value || 0), is_last_one: lo ? 1 : 0, sort: g.prizes.length, line,
         });
       });
@@ -754,7 +758,7 @@
         drawn.push(...got); render(got);
         if (window.PKOpening && $('#tanim', td)?.checked !== false) {
           const tier = window.PKOpening.tiers(pile);
-          window.PKOpening.play(got.map(p => ({ ...p, tier: tier.get(p) || 'normal' })), { title: `${title}（テスト）`, logo: settings?.logoText || 'PK', shop: settings?.shopName || '' });
+          window.PKOpening.play(got.map(p => ({ ...p, fx: tier.get(p) || 0 })), { title: `${title}（テスト）`, logo: settings?.logoText || 'PK', shop: settings?.shopName || '' });
         }
       });
       $('#treset', td).onclick = () => { pile = fresh(); drawn = []; spent = 0; render(); };
@@ -785,13 +789,14 @@
     };
     const draw = () => {
       $('#prz').innerHTML = `
-        <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>LO</span><span></span></div>
+        <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>演出</span><span>LO</span><span></span></div>
         ${prizes.map((p, i) => `<div class="r p6" data-i="${i}">
           <input data-k="rank" value="${esc(p.rank)}" placeholder="S賞">
           <span style="display:flex;gap:4px"><input data-k="name" value="${esc(p.name)}" placeholder="賞品名"><button type="button" class="btn sm" style="flex:none" data-pick="${i}" title="登録済みの商品から選ぶ">商品</button></span>
           <span style="display:flex;gap:4px"><input data-k="image_url" value="${esc(p.image_url)}" placeholder="https://"><label class="btn sm" style="flex:none">画像<input type="file" accept="image/*" data-up="${i}" hidden></label></span>
           <input data-k="qty" type="number" min="0" value="${p.is_last_one ? 1 : esc(p.qty)}" ${locked || p.is_last_one ? 'disabled' : ''}>
           <input data-k="value" type="number" min="0" value="${esc(p.value)}">
+          <select data-k="fx" title="開封演出（自動＝賞の名前から：B賞=青 A賞=赤 S賞=金 SS賞=虹）">${FX_OPTS.map(([v, l]) => `<option value="${v}" ${String(p.fx ?? '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
           <input data-k="is_last_one" type="checkbox" ${p.is_last_one ? 'checked' : ''} ${locked ? 'disabled' : ''} title="ラストワン賞">
           ${locked ? '<span></span>' : `<button type="button" class="link danger" data-rm="${i}">削除</button>`}
         </div>`).join('')}

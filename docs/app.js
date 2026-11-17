@@ -553,7 +553,7 @@
       for (let n = 1; n <= board.size; n++) {
         const x = opened.get(n);
         html += x
-          ? `<div class="bt open t-${x.tier}" title="${n}番：${esc(x.rank)} ${esc(x.name)}">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" loading="lazy">` : ''}<span class="bt-r">${esc(x.rank)}</span><i>${n}</i></div>`
+          ? `<div class="bt open fx-${x.fx || 0}" title="${n}番：${esc(x.rank)} ${esc(x.name)}">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" loading="lazy">` : ''}<span class="bt-r">${esc(x.rank)}</span><i>${n}</i></div>`
           : `<button type="button" class="bt ${picked.has(n) ? 'on' : ''}" data-slot="${n}" ${o.open && me ? '' : 'disabled'} aria-pressed="${picked.has(n)}" aria-label="${n}番のパック"><i>${n}</i></button>`;
       }
       el.innerHTML = html;
