@@ -828,7 +828,10 @@
     if (token && F_ON.members) refreshMe();
     let o;
     try { o = await api(`/api/orders/${encodeURIComponent(no)}?t=${encodeURIComponent(tk)}`); }
-    catch (e) { app.innerHTML = `<p class="pad center">${esc(e.message)}</p>`; return; }
+    catch (e) {
+      if (e.status === 404) store.set('pk_orders', store.get('pk_orders', []).filter(h => h.no !== no)); // 削除された注文は履歴からも外す
+      app.innerHTML = `<p class="pad center">${esc(e.message)}<br><a class="btn" href="#/orders">ご注文履歴へ</a></p>`; return;
+    }
     const digits = o.order_no.replace('PK', '');
     const pickup = o.shipping_method === 'pickup';
     const payLabel = { card: '決済完了', points: 'ポイント払い完了', bank: '入金確認' }[o.payment_method];

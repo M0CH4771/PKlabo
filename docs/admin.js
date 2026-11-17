@@ -177,6 +177,7 @@
                 : o.kind === 'ship' ? (o.status === 'paid' ? `<button class="btn sm" data-act="cancelled">キャンセル（当選品はお客様のBOXに戻す）</button>` : '')
                 : (['awaiting_payment', 'paid'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">キャンセル（在庫・オリパ・ポイントを戻す）</button>` : '')}
               <button class="btn sm" data-act="memo">メモ保存</button>
+              <button class="link danger" data-act="delete" style="margin-left:auto">削除</button>
             </div>
           </div>`).join('') || '<p class="muted pad center">該当する注文はありません</p>'}
       </div>`;
@@ -184,6 +185,15 @@
     $$('[data-act]').forEach(b => b.onclick = async () => {
       const card = b.closest('.order'); const id = card.dataset.id; const act = b.dataset.act;
       const body = { admin_memo: $('.memo', card).value };
+      if (act === 'delete') {
+        const o = ordersCache.find(x => x.id === +id);
+        const active = o.kind === 'coin' ? ['awaiting_payment', 'shipped'] : o.kind === 'ship' ? ['paid'] : ['awaiting_payment', 'paid'];
+        const what = o.kind === 'coin' ? '付与したコインを取り消し' : o.kind === 'ship' ? '当選品をお客様の獲得カードに戻し' : '在庫・オリパの抽選・クーポン・ポイントを元に戻し';
+        if (!confirm(`注文 ${o.order_no} を削除しますか？\n\n注文一覧・お客様の注文履歴・売上の集計から消えます。元に戻せません。${active.includes(o.status) ? `\n進行中の注文なので、キャンセルと同じく${what}てから削除します。` : ''}${o.payment_method === 'card' && ['paid', 'shipped'].includes(o.status) ? '\n（カード決済の返金はStripeの管理画面で行ってください）' : ''}`)) return;
+        b.disabled = true;
+        try { await api(`/api/admin/orders/${id}`, { method: 'DELETE' }); toast('削除しました'); viewOrders(); } catch (e) { toast(e.message); b.disabled = false; }
+        return;
+      }
       if (act === 'cancelled' && !confirm('この注文をキャンセルしますか？\n在庫・オリパの抽選・クーポン・ポイントを元に戻します。\n（カード決済済みの場合、返金はStripeの管理画面で行ってください）')) return;
       if (act === 'shipped' && $('.trk', card)) {
         body.tracking_no = $('.trk', card).value.trim(); body.carrier = $('.car', card).value;
@@ -873,8 +883,12 @@
           <button type="button" class="btn sm primary" id="cadj">${esc(settings.coin.name)}を調整</button>
           <div class="overflow" style="max-height:200px"><table class="t">${cx.ledger.map(l => `<tr><td class="small">${jst(l.created_at)}</td><td class="small">${esc(l.reason)}</td><td class="num ${l.delta > 0 ? 'ok' : 'danger'}">${l.delta > 0 ? '+' : ''}${l.delta}</td></tr>`).join('')}</table></div></div>` : ''}
         <div class="fs"><h3>注文履歴</h3><table class="t">${x.orders.map(o => `<tr><td class="mono small">${esc(o.order_no)}</td><td class="small">${jst(o.created_at)}</td><td class="small">${STATUS[o.status]}</td><td class="num">${yen(o.total)}</td></tr>`).join('') || '<tr><td class="muted">なし</td></tr>'}</table></div>
-        <button class="btn">閉じる</button></form>`;
+        <div class="row-between"><button type="button" class="link danger" id="mdel">この会員を削除</button><button class="btn">閉じる</button></div></form>`;
       d.showModal();
+      $('#mdel').onclick = async () => {
+        if (!confirm(`${x.customer.name} 様を削除しますか？\n\n名前・メール・住所などの個人情報を消してログインできなくします（退会と同じ）。ポイントは0になります。注文の記録は残ります。元に戻せません。`)) return;
+        try { await api(`/api/admin/members/${b.dataset.m}`, { method: 'DELETE' }); d.close(); toast('削除しました'); viewMembers(); } catch (e) { toast(e.message); }
+      };
       const ca = $('#cadj');
       if (ca) ca.onclick = async () => {
         const f = $('#mf');

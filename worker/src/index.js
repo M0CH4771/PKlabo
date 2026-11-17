@@ -452,7 +452,7 @@ async function createShipRequest(req, env) {
 
 async function findOrderByToken(env, orderNo, token) {
   const order = await env.DB.prepare('SELECT * FROM orders WHERE order_no = ?').bind(orderNo).first();
-  if (!order || !token || !timingSafeEqual(token, order.token)) throw new HttpError(404, '注文が見つかりません');
+  if (!order || order.status === 'deleted' || !token || !timingSafeEqual(token, order.token)) throw new HttpError(404, '注文が見つかりません');
   return order;
 }
 
@@ -715,7 +715,7 @@ async function adminOrders(env, url) {
   const status = url.searchParams.get('status');
   const q = status && STATUSES.includes(status)
     ? env.DB.prepare('SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT 500').bind(status)
-    : env.DB.prepare('SELECT * FROM orders ORDER BY id DESC LIMIT 500');
+    : env.DB.prepare(`SELECT * FROM orders WHERE status != 'deleted' ORDER BY id DESC LIMIT 500`);
   const { results: orders } = await q.all();
   if (orders.length) {
     const ph = orders.map(() => '?').join(',');
@@ -915,6 +915,17 @@ async function adminRoutesInner(req, env, path, url) {
       } else throw new HttpError(400, 'このステータスには変更できません');
     }
     return json({ ok: true });
+  }
+
+  // 注文の削除：進行中のものはキャンセルと同じく在庫・オリパ・ポイント・コインを戻してから、一覧・履歴・売上から外す
+  if (mm && m === 'DELETE') {
+    const id = int(mm[1]);
+    const order = await env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first();
+    if (!order || order.status === 'deleted') throw new HttpError(404, '注文が見つかりません');
+    const active = order.kind === 'coin' ? ['awaiting_payment', 'shipped'] : order.kind === 'ship' ? ['paid'] : ['awaiting_payment', 'paid'];
+    const released = active.includes(order.status) && await releaseOrder(env, id, 'deleted', active);
+    if (!released) await env.DB.prepare(`UPDATE orders SET status = 'deleted' WHERE id = ?`).bind(id).run();
+    return json({ ok: true, released: Boolean(released) });
   }
 
   // クーポン

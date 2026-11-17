@@ -296,7 +296,7 @@ export async function memberRoutes(req, env, path) {
     const cust = await requireCustomer(req, env);
     const [{ results: ledger }, { results: orders }] = await Promise.all([
       env.DB.prepare('SELECT delta, reason, created_at FROM point_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 50').bind(cust.id).all(),
-      env.DB.prepare('SELECT order_no, token, status, total, points_used, points_earn, points_granted, created_at FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT 50').bind(cust.id).all(),
+      env.DB.prepare(`SELECT order_no, token, status, total, points_used, points_earn, points_granted, created_at FROM orders WHERE customer_id = ? AND status != 'deleted' ORDER BY id DESC LIMIT 50`).bind(cust.id).all(),
     ]);
     const expiresAt = c.points.expireDays && cust.points > 0 && cust.points_updated_at
       ? toSql(new Date(new Date(cust.points_updated_at.replace(' ', 'T') + 'Z').getTime() + c.points.expireDays * 864e5)) : null;
@@ -326,15 +326,20 @@ export async function memberRoutes(req, env, path) {
 
   if (path === '/api/me' && m === 'DELETE') {
     const cust = await requireCustomer(req, env);
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE customers SET deleted = 1, email = ?, password_hash = '', name = '退会済み', kana = '', phone = '', zip = '', address = '', points = 0 WHERE id = ?`)
-        .bind(`deleted-${cust.id}-${Date.now()}`, cust.id),
-      env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(cust.id),
-    ]);
+    await withdraw(env, cust.id);
     return json({ ok: true });
   }
 
   return null;
+}
+
+// 退会：個人情報を消してログインできなくする（注文の記録は残す）
+async function withdraw(env, id) {
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE customers SET deleted = 1, email = ?, password_hash = '', name = '退会済み', kana = '', phone = '', zip = '', address = '', points = 0 WHERE id = ?`)
+      .bind(`deleted-${id}-${Date.now()}`, id),
+    env.DB.prepare('DELETE FROM sessions WHERE customer_id = ?').bind(id),
+  ]);
 }
 
 // ── 管理API ──
@@ -347,7 +352,7 @@ export async function adminMemberRoutes(req, env, path, url) {
     const { results } = await env.DB.prepare(
       `SELECT c.id, c.email, c.name, c.kana, c.phone, c.points, c.created_at, c.last_login_at, c.email_verified, c.phone_e164 IS NOT NULL AS phone_verified,
               COUNT(o.id) AS orders, COALESCE(SUM(CASE WHEN o.status IN ('paid','shipped') THEN o.total END), 0) AS spent
-         FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+         FROM customers c LEFT JOIN orders o ON o.customer_id = c.id AND o.status != 'deleted'
         WHERE c.deleted = 0 AND (? = '' OR c.email LIKE ? OR c.name LIKE ? OR c.kana LIKE ? OR c.phone LIKE ?)
         GROUP BY c.id ORDER BY c.id DESC LIMIT 300`
     ).bind(q, like, like, like, like).all();
@@ -360,8 +365,15 @@ export async function adminMemberRoutes(req, env, path, url) {
     const c = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
     if (!c) throw new HttpError(404, '会員が見つかりません');
     const { results: ledger } = await env.DB.prepare('SELECT * FROM point_ledger WHERE customer_id = ? ORDER BY id DESC LIMIT 200').bind(id).all();
-    const { results: orders } = await env.DB.prepare('SELECT id, order_no, status, total, created_at FROM orders WHERE customer_id = ? ORDER BY id DESC LIMIT 200').bind(id).all();
+    const { results: orders } = await env.DB.prepare(`SELECT id, order_no, status, total, created_at FROM orders WHERE customer_id = ? AND status != 'deleted' ORDER BY id DESC LIMIT 200`).bind(id).all();
     return json({ customer: profile(c), ledger, orders });
+  }
+  if (mm && m === 'DELETE') {
+    const id = int(mm[1]);
+    const c = await env.DB.prepare('SELECT id FROM customers WHERE id = ? AND deleted = 0').bind(id).first();
+    if (!c) throw new HttpError(404, '会員が見つかりません');
+    await withdraw(env, id);
+    return json({ ok: true });
   }
   mm = path.match(/^\/api\/admin\/members\/(\d+)\/points$/);
   if (mm && m === 'POST') {
