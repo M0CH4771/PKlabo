@@ -34,10 +34,55 @@ export async function readJson(req) {
   try { return await req.json(); } catch { throw new HttpError(400, 'JSONが不正です'); }
 }
 
-export function requireAdmin(req, env) {
-  const key = req.headers.get('X-Admin-Key') || '';
-  if (!env.ADMIN_KEY || !timingSafeEqual(key, env.ADMIN_KEY)) throw new HttpError(401, '管理キーが違います');
+export const clientIp = req => req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For')?.split(',')[0].trim() || 'unknown';
+
+// 回数制限：windowSec 秒の間に limit 回を超えたら 429。1回の問い合わせで数える
+export async function rateLimit(env, key, limit, windowSec, message) {
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(
+    `INSERT INTO rate_limits (key, count, reset_at) VALUES (?1, 1, ?2)
+     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN reset_at <= ?3 THEN 1 ELSE count + 1 END,
+                                    reset_at = CASE WHEN reset_at <= ?3 THEN ?2 ELSE reset_at END
+     RETURNING count`
+  ).bind(key, now + windowSec, now).first();
+  if (row && row.count > limit) throw new HttpError(429, message || 'しばらく時間をおいてからお試しください');
+  return row ? row.count : 1;
 }
+// 数えずに、上限を超えているかだけ見る（失敗回数のチェック用）
+export async function overLimit(env, key, limit) {
+  const row = await env.DB.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').bind(key).first();
+  return Boolean(row && row.reset_at > Math.floor(Date.now() / 1000) && row.count >= limit);
+}
+
+// 2段階認証（TOTP / RFC 6238）
+function base32Decode(s) {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(s || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = 0, val = 0; const out = [];
+  for (const ch of clean) { val = (val << 5) | alpha.indexOf(ch); bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  return new Uint8Array(out);
+}
+export async function totpCode(secret, step) {
+  const key = await crypto.subtle.importKey('raw', base32Decode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const msg = new Uint8Array(8);
+  new DataView(msg.buffer).setUint32(4, step);
+  new DataView(msg.buffer).setUint32(0, Math.floor(step / 0x100000000));
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, msg));
+  const o = h[h.length - 1] & 15;
+  const n = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return String(n % 1000000).padStart(6, '0');
+}
+// 前後30秒のずれまで許容。使った時刻ステップを返す（再利用防止用）
+export async function verifyTotp(secret, code) {
+  code = String(code || '').replace(/\s/g, '');
+  if (!/^\d{6}$/.test(code)) return null;
+  const step = Math.floor(Date.now() / 30000);
+  for (const d of [0, -1, 1]) if (timingSafeEqual(await totpCode(secret, step + d), code)) return step + d;
+  return null;
+}
+
+// CSV の数式インジェクション対策（Excel で開いたときに =… が実行されないように）
+export const csvSafe = v => /^[=+\-@\t\r]/.test(String(v ?? '')) && !/^-?\d+(\.\d+)?$/.test(String(v)) ? "'" + v : v;
 
 export function randomInt(n) {
   // 0..n-1 の偏りのない乱数

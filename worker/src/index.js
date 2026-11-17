@@ -3,7 +3,7 @@
 
 import {
   HttpError, json, int, str, toSql, nowIso, addMinutesIso, yen, parseImages, truthy, isEmail,
-  timingSafeEqual, readJson, requireAdmin, sendMail, notifyAdmin,
+  timingSafeEqual, readJson, sendMail, notifyAdmin, clientIp, rateLimit, overLimit, verifyTotp, sha256hex,
 } from './util.js';
 import { loadConfig, cfg, publicConfig, saveSettings } from './config.js';
 import { getCustomer, memberRoutes, adminMemberRoutes, usePoints, addPoints, grantOrderPoints, reverseOrderPoints, expirePoints } from './members.js';
@@ -229,6 +229,7 @@ async function quote(env, body, customer) {
 
 async function createOrder(req, env) {
   const c = cfg(env);
+  await rateLimit(env, `order:${clientIp(req)}`, 15, 3600, '短時間にご注文が続いています。しばらくしてからお試しください');
   const body = await readJson(req);
   const customer = await getCustomer(req, env);
   if (!c.features.guestCheckout && !customer) throw new HttpError(401, 'ご購入には会員登録（ログイン）が必要です');
@@ -252,6 +253,12 @@ async function createOrder(req, env) {
     if (method === 'card' && !c.cardEnabled) throw new HttpError(400, 'カード決済は現在ご利用いただけません');
     if (method === 'bank' && !c.bankEnabled) throw new HttpError(400, '銀行振込は現在ご利用いただけません');
   } else method = 'points';
+  if (method === 'bank') {
+    // 未入金の注文で在庫を押さえ続けられないように
+    const pend = await env.DB.prepare(`SELECT COUNT(*) AS n FROM orders WHERE status = 'awaiting_payment' AND payment_method = 'bank' AND (lower(email) = lower(?) OR customer_id = ?)`)
+      .bind(info.email, customer ? customer.id : -1).first();
+    if (pend.n >= 3) throw new HttpError(429, 'お支払い待ちのご注文が3件あります。お支払いまたは期限切れの後にご注文ください');
+  }
 
   // 確保 → 失敗したら逆順に戻す
   const undo = [];
@@ -602,12 +609,79 @@ async function adminOrders(env, url) {
   return json(orders);
 }
 
+// ───────────────────────── 管理者の認証 ─────────────────────────
+// 1) 管理キー（＋2段階認証コード）で /api/admin/login → 12時間有効のセッションを発行
+// 2) 以降は X-Admin-Session ヘッダーで認証。管理キーそのものはブラウザに残さない
+const ADMIN_KEY_MIN = 20;
+const randHex = () => [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+
+async function requireAdmin(req, env) {
+  const sess = req.headers.get('X-Admin-Session') || '';
+  if (/^[a-f0-9]{64}$/.test(sess)) {
+    const row = await env.DB.prepare(`SELECT 1 FROM admin_sessions WHERE token_hash = ? AND expires_at > datetime('now')`).bind(await sha256hex(sess)).first();
+    if (row) return;
+    throw new HttpError(401, 'ログインの有効期限が切れました。もう一度ログインしてください');
+  }
+  // スクリプト用：2段階認証を設定していない場合だけ管理キーを直接使える
+  const key = req.headers.get('X-Admin-Key') || '';
+  if (key && !env.ADMIN_TOTP_SECRET) {
+    const ip = clientIp(req);
+    if (await overLimit(env, `adminfail:${ip}`, 5)) throw new HttpError(429, 'ログインの失敗が続いたため、15分間ロックしています');
+    if (env.ADMIN_KEY && env.ADMIN_KEY.length >= ADMIN_KEY_MIN && timingSafeEqual(key, env.ADMIN_KEY)) return;
+    await rateLimit(env, `adminfail:${ip}`, 1000, 900);
+  }
+  throw new HttpError(401, '管理画面にログインしてください');
+}
+
+async function adminLogin(req, env) {
+  const ip = clientIp(req);
+  if (!env.ADMIN_KEY || env.ADMIN_KEY.length < ADMIN_KEY_MIN) throw new HttpError(503, `ADMIN_KEY が未設定か短すぎます（${ADMIN_KEY_MIN}文字以上にしてください）`);
+  if (await overLimit(env, `adminfail:${ip}`, 5) || await overLimit(env, 'adminfail:all', 30)) throw new HttpError(429, 'ログインの失敗が続いたため、しばらくロックしています');
+  const b = await readJson(req);
+  let ok = timingSafeEqual(String(b.key || ''), env.ADMIN_KEY);
+  if (ok && env.ADMIN_TOTP_SECRET) {
+    const step = await verifyTotp(env.ADMIN_TOTP_SECRET, b.otp);
+    ok = step !== null && (await rateLimit(env, `totp:${step}`, 1000, 120)) === 1; // 同じコードの使い回しを防ぐ
+  }
+  if (!ok) {
+    await rateLimit(env, `adminfail:${ip}`, 1000, 900);
+    await rateLimit(env, 'adminfail:all', 1000, 3600);
+    await env.DB.prepare('INSERT INTO admin_log (ip, action) VALUES (?, ?)').bind(ip, 'ログイン失敗').run();
+    throw new HttpError(401, env.ADMIN_TOTP_SECRET ? '管理キーか認証コードが違います' : '管理キーが違います');
+  }
+  const token = randHex();
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO admin_sessions (token_hash, ip, expires_at) VALUES (?, ?, datetime('now', '+12 hours'))`).bind(await sha256hex(token), ip),
+    env.DB.prepare('INSERT INTO admin_log (ip, action) VALUES (?, ?)').bind(ip, 'ログイン'),
+  ]);
+  return json({ session: token });
+}
+
 async function adminRoutes(req, env, path, url) {
-  requireAdmin(req, env);
+  if (path === '/api/admin/auth-info' && req.method === 'GET') return json({ totp: Boolean(env.ADMIN_TOTP_SECRET), ready: Boolean(env.ADMIN_KEY && env.ADMIN_KEY.length >= ADMIN_KEY_MIN) });
+  if (path === '/api/admin/login' && req.method === 'POST') return adminLogin(req, env);
+  if (path === '/api/admin/logout' && req.method === 'POST') {
+    const sess = req.headers.get('X-Admin-Session') || '';
+    if (sess) await env.DB.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').bind(await sha256hex(sess)).run();
+    return json({ ok: true });
+  }
+  await requireAdmin(req, env);
+  const res = await adminRoutesInner(req, env, path, url);
+  if (req.method !== 'GET' && res.status < 400) {
+    await env.DB.prepare('INSERT INTO admin_log (ip, action) VALUES (?, ?)').bind(clientIp(req), `${req.method} ${path.replace('/api/admin/', '')}`).run().catch(() => {});
+  }
+  return res;
+}
+
+async function adminRoutesInner(req, env, path, url) {
   const m = req.method;
   const c = cfg(env);
 
   if (path === '/api/admin/ping') return json({ ok: true });
+  if (path === '/api/admin/log' && m === 'GET') {
+    const { results } = await env.DB.prepare('SELECT at, ip, action FROM admin_log ORDER BY id DESC LIMIT 200').all();
+    return json(results);
+  }
 
   if (path === '/api/admin/settings' && m === 'GET') return json({ settings: c, env: { stripe: Boolean(env.STRIPE_SECRET_KEY), webhook: Boolean(env.STRIPE_WEBHOOK_SECRET), mail: c.mailEnabled, r2: Boolean(env.IMAGES), siteUrl: env.SITE_URL || '' } });
   if (path === '/api/admin/settings' && m === 'PUT') return json({ settings: await saveSettings(env, await readJson(req)) });
@@ -766,6 +840,7 @@ async function handle(req, env) {
   }
   if (path === '/api/restock' && req.method === 'POST') {
     if (!c.features.restock) throw new HttpError(403, '入荷通知は現在ご利用いただけません');
+    await rateLimit(env, `restock:${clientIp(req)}`, 20, 3600);
     const b = await readJson(req);
     const email = str(b.email, 200);
     if (!isEmail(email)) throw new HttpError(400, 'メールアドレスの形式が正しくありません');
@@ -777,6 +852,7 @@ async function handle(req, env) {
     return json({ ok: true }, 201);
   }
   if (path === '/api/quote' && req.method === 'POST') {
+    await rateLimit(env, `quote:${clientIp(req)}`, 300, 600);
     const customer = await getCustomer(req, env);
     const b = await readJson(req);
     const q = await quote(env, b, customer);
@@ -787,6 +863,7 @@ async function handle(req, env) {
     });
   }
   if (path === '/api/coupon' && req.method === 'POST') {
+    await rateLimit(env, `coupon:${clientIp(req)}`, 30, 600);
     const b = await readJson(req);
     const items = await priceCart(env, (Array.isArray(b.items) ? b.items : []).filter(i => int(i.product_id) > 0));
     const c2 = await evaluateCoupon(env, b.code, items.reduce((s, it) => s + it.price * it.qty, 0));
@@ -815,6 +892,24 @@ async function handle(req, env) {
   throw new HttpError(404, 'not found');
 }
 
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+  'Strict-Transport-Security': 'max-age=31536000',
+};
+
+async function cleanup(env) {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM rate_limits WHERE reset_at < ?').bind(Math.floor(Date.now() / 1000)),
+    env.DB.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`),
+    env.DB.prepare(`DELETE FROM admin_sessions WHERE expires_at < datetime('now')`),
+    env.DB.prepare(`DELETE FROM password_resets WHERE expires_at < datetime('now')`),
+    env.DB.prepare(`DELETE FROM email_verifications WHERE expires_at < datetime('now')`),
+    env.DB.prepare(`DELETE FROM admin_log WHERE at < datetime('now', '-180 days')`),
+  ]);
+}
+
 export default {
   async fetch(req, baseEnv) {
     const headers = cors(baseEnv, req);
@@ -825,11 +920,13 @@ export default {
       const res = await handle(req, env);
       const out = new Response(res.body, res);
       for (const [k, v] of Object.entries(headers)) if (!(k === 'Access-Control-Allow-Origin' && out.headers.has(k))) out.headers.set(k, v);
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+      if (!out.headers.has('Cache-Control')) out.headers.set('Cache-Control', 'no-store'); // 個人情報を含む応答はキャッシュさせない
       return out;
     } catch (e) {
       const status = e instanceof HttpError ? e.status : 500;
       if (status === 500) console.error(e);
-      return json({ error: status === 500 ? 'サーバーエラーが発生しました' : e.message, failed: e.failed, failed_oripa: e.failed_oripa }, status, headers);
+      return json({ error: status === 500 ? 'サーバーエラーが発生しました' : e.message, failed: e.failed, failed_oripa: e.failed_oripa }, status, { ...headers, ...SECURITY_HEADERS, 'Cache-Control': 'no-store' });
     }
   },
   // 15分ごと：入金期限切れの注文を自動キャンセル、ポイント失効
@@ -839,6 +936,7 @@ export default {
       await loadConfig(env);
       await expireOverdueOrders(env);
       await expirePoints(env);
+      await cleanup(env);
     })());
   },
 };

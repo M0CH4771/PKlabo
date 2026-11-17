@@ -35,71 +35,117 @@ GitHub Pages（画面）＋ Cloudflare Workers ＋ D1（API・データ）で動
 - 在庫は注文した瞬間に確保、入金期限切れで自動キャンセル（15分ごと）
 
 ```
-docs/            … GitHub Pages で公開する画面
-  index.html     … ショップ（一覧・詳細・カート・購入・注文確認）
-  admin.html     … 管理画面
-  legal.html     … 特定商取引法に基づく表記・返品・プライバシー
-  config.js      … API の URL などの設定
+docs/              … GitHub Pages で公開する画面
+  index.html, app.js   … ショップ
+  admin.html, admin.js … 管理画面
+  legal.html, legal.js … 特定商取引法に基づく表記（管理画面の設定から自動生成）
+  config.js            … API の URL
   style.css
-worker/          … Cloudflare Worker（API）
-  src/index.js
-  schema.sql     … D1 のテーブル
+worker/            … Cloudflare Worker（API）
+  src/index.js     … 商品・注文・管理API
+  src/members.js   … 会員・ポイント
+  src/oripa.js     … オリパ
+  src/config.js    … 管理画面で変更できる設定
+  src/util.js      … 共通処理（回数制限・2段階認証など）
+  schema.sql       … D1 のテーブル
   wrangler.toml
+scripts/totp-secret.mjs … 管理画面の2段階認証キーを作る
 ```
 
-## セットアップ
+## 公開までの手順
 
-### 1. D1 と Worker を作る
+必要なもの：Cloudflare アカウント（無料）、パソコンの Node.js 20 以上、このリポジトリ。
+
+### 1. API（Cloudflare Worker）を作る
 
 ```bash
-cd worker
-npx wrangler login
-npx wrangler d1 create pklabo-db
-# 表示された database_id を wrangler.toml に貼る
+git clone https://github.com/M0CH4771/PKlabo.git
+cd PKlabo/worker
+npx wrangler login                                   # ブラウザで Cloudflare にログイン
+npx wrangler d1 create pklabo-db                     # 表示された database_id を wrangler.toml に貼る
 npx wrangler d1 execute pklabo-db --remote --file=schema.sql
-npx wrangler secret put ADMIN_KEY      # 管理画面のログインキー（長めのランダム文字列）
-npx wrangler deploy
 ```
 
-送料・振込先・発送曜日などのショップ設定は、デプロイ後に **管理画面の「設定」タブ** から変更できます（`wrangler.toml` の `[vars]` は初期値として使われます）。
+### 2. 管理画面の鍵を登録する（秘密の値は GitHub に置かない）
 
-既に古いスキーマで D1 を作っていた場合は、テーブルを作り直してください（まだ本番データが無い前提です）。
+```bash
+openssl rand -base64 30                               # ← 出てきた文字列を管理キーにする（パスワード管理アプリに保存）
+npx wrangler secret put ADMIN_KEY                     # 上の文字列を貼る（20文字以上必須）
 
-### 2. 画面を公開する
+node ../scripts/totp-secret.mjs                       # 2段階認証の秘密鍵を作る
+npx wrangler secret put ADMIN_TOTP_SECRET             # 表示された秘密鍵を貼る
+```
 
-1. `docs/config.js` の `API_BASE` を、デプロイした Worker の URL（`https://pklabo-api.xxxx.workers.dev`）に書き換える
-2. GitHub の Settings → Pages → Branch: `main` / フォルダ: `/docs` で公開
-3. `docs/legal.html` の【要記入】を実際の情報に書き換える
+秘密鍵はスマホの認証アプリ（Google Authenticator など）の「セットアップキーを入力」にも登録します。以後、管理画面へのログインは「管理キー＋アプリの6桁コード」になります。
 
-公開 URL：`https://m0ch4771.github.io/pklabo/`（管理画面は `/admin.html`）
+### 3. デプロイ
 
-### 3. 古物商の URL 届出
+```bash
+npx wrangler deploy                                   # 表示された https://pklabo-api.〇〇.workers.dev を控える
+```
 
-中古品をネットで販売するので、公開したサイトの URL を、許可を受けた警察署経由で届け出てください。
+### 4. 画面（GitHub Pages）を公開する
+
+1. `docs/config.js` の `API_BASE` を手順3の URL に書き換えて commit / push
+2. GitHub のリポジトリ → Settings → Pages → Branch: `main`、フォルダ: `/docs` → Save
+3. 数分後に `https://m0ch4771.github.io/PKlabo/` で公開されます（管理画面は `/admin.html`）
+4. `worker/wrangler.toml` の `SITE_URL` と `ALLOWED_ORIGIN` が公開URLと合っているか確認（違えば直して再デプロイ）
+
+### 5. 管理画面で初期設定
+
+`/admin.html` にログイン →「設定」タブ：
+- 振込先（**公開リポジトリに口座情報を書かないため、ここで入力**）
+- 特定商取引法の表記（販売業者・責任者・所在地・電話・メール）
+- 送料・送料無料ライン・発送曜日・締め時刻・店頭受け取り
+- ポイント・オリパ・各機能のON/OFF、テーマカラー、お知らせ
+
+### 6. 商品登録 → テスト注文
+
+1. 「CSV入出力」で空のテンプレートを書き出し → スプレッドシートで入力 → 読み込み（または「商品」タブで1件ずつ）
+2. 自分で振込のテスト注文 → 管理画面で「入金確認」→「発送済み」→ 状態がお客様ページに反映されるか確認 → キャンセルして在庫が戻るか確認
+
+### 7. 法令まわり
+
+- **古物商のURL届出**：中古品をネットで売るので、公開URLを許可を受けた警察署経由で届け出る
+- **オリパ**：オンラインオリパは法的にグレーな分野です。販売前に弁護士に確認することをおすすめします（設計上の配慮は下の「セキュリティ」参照）
+
+### 8. 必要になったら（任意）
+
+| 設定 | 内容 |
+| --- | --- |
+| メール送信 `RESEND_API_KEY` / `MAIL_FROM` | Resend（無料枠あり）でドメイン認証して登録。注文・入金・発送・入荷通知・会員のメール確認・パスワード再設定が自動で届くようになります。**会員の登録ボーナスはメール確認後に付与**されるので、会員・ポイントを使うなら設定推奨 |
+| カード決済 `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe の審査が通ったら登録。Webhook は `https://<worker>/api/stripe/webhook` に `checkout.session.completed` と `checkout.session.expired` |
+| 画像の保存先 R2（`IMAGES`） | 未設定なら D1 に保存。画像が増えたら R2 へ |
+| `ADMIN_EMAIL` / `DISCORD_WEBHOOK_URL` | 新規注文の通知先 |
+
+## 日々の運用
+
+1. 振込の照合：通帳・ネットバンクの振込名義の先頭6桁（注文番号）で照合 →「注文」タブで「入金確認」（オリパはこの時点で開封可能に）
+2. 発送：「発送待ち」でピッキングリスト・納品書を印刷 → 梱包 → 追跡番号を入れて「発送済み」（ポイントはここで付与）
+3. 期限内に入金がない注文は自動で「期限切れ」になり、在庫・オリパ・ポイント・クーポンが戻ります
+4. 在庫の入荷はCSVの「在庫に加算」モードでまとめて反映できます
+
+## セキュリティ
+
+**組み込み済みの対策**
+- 管理画面：管理キー（20文字以上）＋2段階認証、5回失敗で15分ロック（全体でも1時間30回まで）、ログインは12時間で失効、管理キーはブラウザに保存しない、操作履歴（設定タブの下）
+- 会員：パスワードは PBKDF2（10万回）でハッシュ化、ログイン失敗は1アカウント10回・1IP20回でロック、登録は1IP1時間5件まで、パスワード変更で他端末をログアウト、メール確認後に登録ボーナス
+- 注文：金額はすべてサーバーで計算、注文確認ページは推測できないトークンが必要、未入金の振込注文は1人3件まで、注文は1IP1時間15件まで
+- オリパ：抽選はサーバーの暗号論的乱数、賞ごとの残り数は支払い確定分だけ公開（入金前に中身を推測して払わない「引き直し」を防止）、販売開始後は封入内容を変更不可、当選品のポイント交換なし
+- 画面：Content-Security-Policy でインラインスクリプトを禁止、表示する文字はすべてエスケープ、書き出すCSVは Excel の数式実行を無効化
+- API：SQL はすべてプレースホルダー、Stripe Webhook は署名を検証、個人情報を含む応答はキャッシュさせない、セキュリティヘッダー付き
+
+**運用で守ってほしいこと**
+- 管理キー・2段階認証の秘密鍵・Stripe/Resend のキーは GitHub やチャットに貼らない（`wrangler secret put` でだけ登録）
+- Cloudflare・GitHub・Stripe のアカウントにも2段階認証を設定する
+- 管理画面は共用PCで使わない。使い終わったらログアウト
+- 「設定」タブの操作履歴に覚えのない操作やログイン失敗の急増がないか、ときどき確認する
+- もし管理キーが漏れたら：`npx wrangler secret put ADMIN_KEY` で新しい値に変えて再デプロイ（既存のログインは12時間以内に切れます）
+- D1 は過去7日分（無料プラン）まで任意の時点に戻せます（Time Travel）。大きな作業の前は `npx wrangler d1 export pklabo-db --remote --output=backup.sql` でバックアップ
 
 ## Cloudflare 無料プランについて
 
 無料プランは「1回の処理で D1 に問い合わせできるのは50回まで」です。CSV 読み込みは100行ずつ分けて送信、オリパは口数によらず数回の問い合わせで抽選、入金期限切れの自動キャンセルは1回5件ずつ処理するようにしてあります。商品数・注文数が大きく増えたら Workers Paid（月5ドル〜）を検討してください。
-
-## 任意の設定
-
-| 設定 | 内容 |
-| --- | --- |
-| `STRIPE_SECRET_KEY` | 入れるとカード払いが有効になります（`wrangler secret put`） |
-| `STRIPE_WEBHOOK_SECRET` | Stripe の Webhook エンドポイント `https://<worker>/api/stripe/webhook` に `checkout.session.completed` と `checkout.session.expired` を登録して表示される署名シークレット |
-| `RESEND_API_KEY` / `MAIL_FROM` | 注文・入金確認・発送・入荷通知のメールを自動送信（Resend でドメイン認証が必要）。未設定だと入荷通知フォームは表示されません |
-| R2 バケット `IMAGES` | 商品画像の保存先。設定しなければ D1 に保存されます（小規模ならそのままでOK） |
-| `ADMIN_EMAIL` | 新規注文をメールで通知 |
-| `DISCORD_WEBHOOK_URL` | 新規注文を Discord に通知 |
-
-メールを設定しない場合も、お客様は注文完了ページ（ブックマーク用URL）で振込先と状況を確認できます。
-
-## 運用の流れ（振込）
-
-1. お客様が注文 → 在庫確保、振込先と注文番号が表示される
-2. 通帳・ネットバンクの振込名義の先頭6桁（注文番号）で照合 → 管理画面で「入金確認」
-3. 発送したら追跡番号を入れて「発送済みにする」
-4. 期限内に入金がない注文は自動で「期限切れ」になり、在庫が戻る
 
 ## CSV 一括登録の形式
 

@@ -10,10 +10,17 @@ function requireOripa(env) {
   if (!cfg(env).features.oripa) throw new HttpError(403, 'オリパは現在販売していません');
 }
 
+// 公開する賞ごとの残り数は「支払い済みの抽選」だけを反映する。
+// 未入金の注文の抽選結果まで反映すると、残り数の減り方から入金前に中身を推測でき、
+// ハズレなら払わずに期限切れにする「引き直し」ができてしまうため。
 async function prizesFor(env, ids) {
   if (!ids.length) return {};
   const { results } = await env.DB.prepare(
-    `SELECT oripa_id, ${PUBLIC_PRIZE} FROM oripa_prizes WHERE oripa_id IN (${ids.map(() => '?').join(',')}) ORDER BY is_last_one DESC, sort, value DESC, id`
+    `SELECT p.oripa_id, p.id, p.rank, p.name, p.image_url, p.qty, p.value, p.is_last_one, p.sort, p.qty - COALESCE(d.n, 0) AS remaining
+       FROM oripa_prizes p
+       LEFT JOIN (SELECT dr.prize_id, COUNT(*) AS n FROM oripa_draws dr JOIN orders o ON o.id = dr.order_id
+                   WHERE o.status IN ('paid','shipped') GROUP BY dr.prize_id) d ON d.prize_id = p.id
+      WHERE p.oripa_id IN (${ids.map(() => '?').join(',')}) ORDER BY p.is_last_one DESC, p.sort, p.value DESC, p.id`
   ).bind(...ids).all();
   const g = {};
   results.forEach(p => (g[p.oripa_id] ||= []).push(p));
@@ -23,7 +30,9 @@ async function prizesFor(env, ids) {
 const isOpen = o => o.status === 'live' && (!o.starts_at || o.starts_at <= toSql(new Date())) && (!o.ends_at || o.ends_at > toSql(new Date()));
 
 function publicOripa(o, prizes) {
+  const confirmed = (prizes || []).filter(p => !p.is_last_one).reduce((s, p) => s + (p.qty - p.remaining), 0);
   return {
+    pending: Math.max(0, o.sold - confirmed), // お支払い待ちの口数
     id: o.id, title: o.title, image_url: o.image_url, description: o.description, price: o.price,
     total: o.total, sold: o.sold, remaining: o.total - o.sold, max_per_order: o.max_per_order,
     status: o.status, open: isOpen(o) && o.sold < o.total, starts_at: o.starts_at, ends_at: o.ends_at, prizes: prizes || [],

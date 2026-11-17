@@ -461,7 +461,7 @@
       </div>
       <div class="box">
         <h3>封入内容（リアルタイム）</h3>
-        <p class="small muted">全${o.total}口の中身をすべて公開しています。残り数は購入のたびに更新されます。</p>
+        <p class="small muted">全${o.total}口の中身をすべて公開しています。賞ごとの残り数と確率は、お支払いが確定した分から反映されます${o.pending ? `（お支払い待ち ${o.pending}口）` : ''}。</p>
         <div class="prizes">
           ${pool.map(p => `
             <div class="prize ${p.remaining ? '' : 'out'}">
@@ -793,7 +793,7 @@
         try {
           const r = await api(mode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: JSON.stringify(fd) });
           setToken(r.token); await refreshMe();
-          toast(mode === 'login' ? 'ログインしました' : `登録しました${F_ON.points && config.points.signupBonus ? `（${config.points.signupBonus}pt プレゼント）` : ''}`);
+          toast(mode === 'login' ? 'ログインしました' : r.verify_sent ? '登録しました。確認メールのリンクを開いてください' : `登録しました${F_ON.points && config.points.signupBonus ? `（${config.points.signupBonus}pt プレゼント）` : ''}`);
           location.hash = next === 'checkout' ? '#/checkout' : '#/account';
         } catch (err) { const a = $('#aerr'); a.textContent = err.message; a.hidden = false; }
       };
@@ -804,6 +804,7 @@
     const c = me.customer;
     app.innerHTML = `
       <h1 class="h">マイページ</h1>
+      ${!c.email_verified && config.mailEnabled ? `<div class="loginhint"><b>メールアドレスの確認がまだです。</b>${c.email} に届いたリンクを開いてください。${F_ON.points && config.points.signupBonus ? `確認すると登録ボーナス${config.points.signupBonus}ptが付きます。` : ''} <button class="link" id="resend">確認メールを再送</button></div>` : ''}
       ${F_ON.points ? `
       <div class="pointcard">
         <span class="small">保有ポイント</span><b>${c.points.toLocaleString()}<small>pt</small></b>
@@ -831,6 +832,7 @@
           <button class="btn primary">変更</button>
         </form></details>
       <div class="row-between"><button class="btn" id="logout">ログアウト</button><button class="link muted" id="withdraw">退会する</button></div>`;
+    const rsd = $('#resend'); if (rsd) rsd.onclick = async () => { try { await api('/api/auth/verify-resend', { method: 'POST' }); toast('確認メールを送りました'); } catch (err) { toast(err.message); } };
     $('#pf').onsubmit = async e => { e.preventDefault(); try { await api('/api/me', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('保存しました'); await refreshMe(); } catch (err) { toast(err.message); } };
     $('#pw').onsubmit = async e => { e.preventDefault(); try { await api('/api/me', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('パスワードを変更しました'); e.target.reset(); } catch (err) { toast(err.message); } };
     $('#logout').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setToken(null); toast('ログアウトしました'); location.hash = '#/'; };
@@ -838,6 +840,15 @@
       if (!confirm(`退会すると${F_ON.points ? `保有ポイント（${c.points}pt）と` : ''}会員情報が削除され、元に戻せません。退会しますか？`)) return;
       try { await api('/api/me', { method: 'DELETE' }); setToken(null); toast('退会しました'); location.hash = '#/'; } catch (err) { toast(err.message); }
     };
+  }
+
+  async function viewVerify(params) {
+    app.innerHTML = '<p class="muted center pad">確認中…</p>';
+    try {
+      const r = await api('/api/auth/verify', { method: 'POST', body: JSON.stringify({ token: params.get('token') }) });
+      await refreshMe();
+      app.innerHTML = `<div class="auth box center"><h1 class="h">メールアドレスを確認しました</h1>${r.bonus ? `<p>登録ボーナス <b>${r.bonus}ポイント</b> をお付けしました。</p>` : ''}<a class="btn primary" href="#/">お買い物を始める</a></div>`;
+    } catch (e) { app.innerHTML = `<div class="auth box center"><p>${esc(e.message)}</p><a class="btn" href="#/account">マイページへ</a></div>`; }
   }
 
   function viewForgot() {
@@ -984,10 +995,12 @@
       if (path === '/account') return viewAccount(params);
       if (path === '/forgot') return viewForgot();
       if (path === '/reset') return viewReset(params);
+      if (path === '/verify') return viewVerify(params);
       return viewList();
     } catch (e) {
       console.error(e);
-      app.innerHTML = `<div class="pad center"><p>読み込みに失敗しました</p><p class="muted small">${esc(e.message)}</p><button class="btn" onclick="location.reload()">再読み込み</button></div>`;
+      app.innerHTML = `<div class="pad center"><p>読み込みに失敗しました</p><p class="muted small">${esc(e.message)}</p><button class="btn" id="reload">再読み込み</button></div>`;
+      $('#reload').onclick = () => location.reload();
     }
   }
   window.addEventListener('hashchange', route);

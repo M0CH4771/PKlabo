@@ -19,7 +19,7 @@ crons = ["*/15 * * * *"]
 [vars]
 SHOP_NAME = "ポケカ買取ラボ"
 # GitHub Pages の URL（末尾スラッシュなし）。メール内リンクと Stripe の戻り先に使う
-SITE_URL = "https://m0ch4771.github.io/pklabo"
+SITE_URL = "https://m0ch4771.github.io/PKlabo"
 # API を呼んでよい画面のドメイン（カンマ区切り）
 ALLOWED_ORIGIN = "https://m0ch4771.github.io"
 SHIPPING_FEE = "230"
@@ -34,14 +34,11 @@ PICKUP_ENABLED = "true"
 PICKUP_INFO = "ポケカ買取ラボ店頭にてお渡しします。営業時間内にご来店ください。（住所・営業時間をここに記入）"
 # 商品ページの「このカードを売る」から飛ぶ買取フォーム
 BUYBACK_URL = "https://mocha0908.github.io/PKlab/"
-BANK_INFO = """
-〇〇銀行 〇〇支店
-普通 1234567
-口座名義 ポケカカイトリラボ
-"""
+# 振込先・送料などは、デプロイ後に管理画面の「設定」タブで入力します（公開リポジトリに口座情報を書かないため）
 
 # ── 秘密の値は vars ではなく secret で登録（README 参照）──
-# npx wrangler secret put ADMIN_KEY             （必須）管理画面のログインキー
+# npx wrangler secret put ADMIN_KEY             （必須）管理画面のログインキー（20文字以上のランダムな文字列）
+# npx wrangler secret put ADMIN_TOTP_SECRET     （強く推奨）2段階認証。node scripts/totp-secret.mjs で作成
 # npx wrangler secret put STRIPE_SECRET_KEY     （任意）入れるとカード決済が有効になる
 # npx wrangler secret put STRIPE_WEBHOOK_SECRET （任意）Stripe の Webhook 署名シークレット
 # npx wrangler secret put RESEND_API_KEY        （任意）注文メール・入荷通知メール

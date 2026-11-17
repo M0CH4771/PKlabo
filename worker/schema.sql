@@ -135,6 +135,8 @@ CREATE TABLE IF NOT EXISTS customers (
   failed_logins      INTEGER NOT NULL DEFAULT 0,
   locked_until       TEXT,
   last_login_at      TEXT,
+  email_verified     INTEGER NOT NULL DEFAULT 0,
+  bonus_granted      INTEGER NOT NULL DEFAULT 0,
   deleted            INTEGER NOT NULL DEFAULT 0,
   created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -207,3 +209,33 @@ CREATE TABLE IF NOT EXISTS oripa_draws (
 );
 CREATE INDEX IF NOT EXISTS idx_draws_order ON oripa_draws(order_id);
 CREATE INDEX IF NOT EXISTS idx_draws_oripa ON oripa_draws(oripa_id, revealed_at);
+
+-- メールアドレス確認
+CREATE TABLE IF NOT EXISTS email_verifications (
+  token_hash   TEXT PRIMARY KEY,
+  customer_id  INTEGER NOT NULL,
+  expires_at   TEXT NOT NULL
+);
+
+-- 回数制限（ログイン失敗・登録・注文など）
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key       TEXT PRIMARY KEY,
+  count     INTEGER NOT NULL,
+  reset_at  INTEGER NOT NULL      -- UNIX秒
+);
+
+-- 管理画面のログイン（12時間で失効）
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token_hash  TEXT PRIMARY KEY,
+  ip          TEXT,
+  expires_at  TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 管理画面の操作履歴
+CREATE TABLE IF NOT EXISTS admin_log (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  at      TEXT NOT NULL DEFAULT (datetime('now')),
+  ip      TEXT,
+  action  TEXT NOT NULL
+);

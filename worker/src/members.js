@@ -1,6 +1,6 @@
 // 会員登録・ログイン・ポイント
 
-import { HttpError, json, int, str, isEmail, readJson, sha256hex, nowIso, toSql, sendMail, timingSafeEqual } from './util.js';
+import { HttpError, json, int, str, isEmail, readJson, sha256hex, nowIso, toSql, sendMail, timingSafeEqual, clientIp, rateLimit, overLimit } from './util.js';
 import { cfg } from './config.js';
 
 const ITER = 100000; // Workers の PBKDF2 上限
@@ -53,7 +53,7 @@ async function requireCustomer(req, env) {
 }
 
 const profile = c => ({
-  id: c.id, email: c.email, name: c.name, kana: c.kana, phone: c.phone, zip: c.zip, address: c.address,
+  id: c.id, email: c.email, email_verified: Boolean(c.email_verified), name: c.name, kana: c.kana, phone: c.phone, zip: c.zip, address: c.address,
   points: c.points, points_updated_at: c.points_updated_at, created_at: c.created_at,
 });
 
@@ -107,6 +107,23 @@ export async function expirePoints(env) {
   return results.length;
 }
 
+async function sendVerifyMail(env, id, email, name) {
+  const c = cfg(env);
+  const token = randToken();
+  await env.DB.prepare(`INSERT INTO email_verifications (token_hash, customer_id, expires_at) VALUES (?, ?, datetime('now', '+3 days'))`).bind(await sha256hex(token), id).run();
+  const site = (env.SITE_URL || '').replace(/\/$/, '');
+  await sendMail(env, email, `【${c.shopName}】メールアドレスの確認`,
+    `${name} 様\n\n${c.shopName}への会員登録ありがとうございます。\n以下のリンクを開いて、メールアドレスの確認を完了してください（3日以内）。\n${site}/#/verify?token=${token}\n${c.features.points && c.points.signupBonus ? `\n確認が完了すると、登録ボーナス${c.points.signupBonus}ポイントをお付けします。\n` : ''}\nお心当たりがない場合はこのメールを破棄してください。\n${c.shopName}`);
+}
+
+async function grantSignupBonus(env, id) {
+  const c = cfg(env);
+  const r = await env.DB.prepare('UPDATE customers SET bonus_granted = 1 WHERE id = ? AND bonus_granted = 0').bind(id).run();
+  if (r.meta.changes !== 1 || !c.features.points || c.points.signupBonus <= 0) return 0;
+  await addPoints(env, id, c.points.signupBonus, '新規会員登録ボーナス');
+  return c.points.signupBonus;
+}
+
 // ── 公開API ──
 
 export async function memberRoutes(req, env, path) {
@@ -115,6 +132,7 @@ export async function memberRoutes(req, env, path) {
 
   if (path === '/api/auth/register' && m === 'POST') {
     requireMembers(env);
+    await rateLimit(env, `reg:${clientIp(req)}`, 5, 3600, '短時間に登録が続いています。しばらくしてからお試しください');
     const b = await readJson(req);
     const email = str(b.email, 200).toLowerCase();
     if (!isEmail(email)) throw new HttpError(400, 'メールアドレスの形式が正しくありません');
@@ -127,15 +145,21 @@ export async function memberRoutes(req, env, path) {
       `INSERT INTO customers (email, password_hash, name, kana, phone, zip, address) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).bind(email, await hashPassword(b.password), name, str(b.kana, 100), str(b.phone, 30), str(b.zip, 10), str(b.address, 300)).run();
     const id = r.meta.last_row_id;
-    if (c.features.points && c.points.signupBonus > 0) await addPoints(env, id, c.points.signupBonus, '新規会員登録ボーナス');
+    if (c.mailEnabled) {
+      // メール確認が済んだら登録ボーナスを付与（使い捨てアドレスでのボーナス目当て登録を防ぐ）
+      await sendVerifyMail(env, id, email, name);
+    } else {
+      await grantSignupBonus(env, id);
+    }
     const token = await createSession(env, id);
     const cust = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
-    await sendMail(env, email, `【${c.shopName}】会員登録ありがとうございます`, `${name} 様\n\n${c.shopName}への会員登録が完了しました。${c.features.points && c.points.signupBonus ? `\n登録ボーナスとして${c.points.signupBonus}ポイントをお付けしました。` : ''}\n\n${c.shopName}`);
-    return json({ token, customer: profile(cust) }, 201);
+    return json({ token, customer: profile(cust), verify_sent: c.mailEnabled }, 201);
   }
 
   if (path === '/api/auth/login' && m === 'POST') {
     requireMembers(env);
+    const ip = clientIp(req);
+    if (await overLimit(env, `loginfail:${ip}`, 20)) throw new HttpError(429, 'ログインの失敗が続いたため、しばらくしてからお試しください');
     const b = await readJson(req);
     const email = str(b.email, 200).toLowerCase();
     const cust = await env.DB.prepare('SELECT * FROM customers WHERE email = ? AND deleted = 0').bind(email).first();
@@ -146,6 +170,7 @@ export async function memberRoutes(req, env, path) {
         await env.DB.prepare('UPDATE customers SET failed_logins = ?, locked_until = ? WHERE id = ?')
           .bind(fails >= 10 ? 0 : fails, fails >= 10 ? toSql(new Date(Date.now() + 15 * 60000)) : null, cust.id).run();
       }
+      await rateLimit(env, `loginfail:${ip}`, 100000, 900);
       throw new HttpError(401, 'メールアドレスかパスワードが違います');
     }
     await env.DB.prepare(`UPDATE customers SET failed_logins = 0, locked_until = NULL, last_login_at = datetime('now') WHERE id = ?`).bind(cust.id).run();
@@ -160,8 +185,10 @@ export async function memberRoutes(req, env, path) {
 
   if (path === '/api/auth/reset-request' && m === 'POST') {
     requireMembers(env);
+    await rateLimit(env, `reset:${clientIp(req)}`, 5, 3600);
     const b = await readJson(req);
     const email = str(b.email, 200).toLowerCase();
+    await rateLimit(env, `reset:${email}`, 3, 3600);
     const cust = await env.DB.prepare('SELECT id, name FROM customers WHERE email = ? AND deleted = 0').bind(email).first();
     if (cust && c.mailEnabled) {
       const token = randToken();
@@ -187,6 +214,27 @@ export async function memberRoutes(req, env, path) {
     return json({ token: await createSession(env, row.customer_id) });
   }
 
+  if (path === '/api/auth/verify' && m === 'POST') {
+    const b = await readJson(req);
+    const row = await env.DB.prepare(`SELECT * FROM email_verifications WHERE token_hash = ? AND expires_at > datetime('now')`).bind(await sha256hex(str(b.token, 100))).first();
+    if (!row) throw new HttpError(400, 'リンクの有効期限が切れています。マイページから確認メールを再送してください');
+    await env.DB.batch([
+      env.DB.prepare('UPDATE customers SET email_verified = 1 WHERE id = ?').bind(row.customer_id),
+      env.DB.prepare('DELETE FROM email_verifications WHERE customer_id = ?').bind(row.customer_id),
+    ]);
+    const bonus = await grantSignupBonus(env, row.customer_id);
+    return json({ ok: true, bonus });
+  }
+
+  if (path === '/api/auth/verify-resend' && m === 'POST') {
+    const cust = await requireCustomer(req, env);
+    if (cust.email_verified) return json({ ok: true });
+    if (!c.mailEnabled) throw new HttpError(400, 'メール送信が設定されていません');
+    await rateLimit(env, `verify:${cust.id}`, 3, 3600);
+    await sendVerifyMail(env, cust.id, cust.email, cust.name);
+    return json({ ok: true });
+  }
+
   if (path === '/api/me' && m === 'GET') {
     const cust = await requireCustomer(req, env);
     const [{ results: ledger }, { results: orders }] = await Promise.all([
@@ -204,7 +252,12 @@ export async function memberRoutes(req, env, path) {
     if (b.new_password) {
       checkPassword(b.new_password);
       if (!(await verifyPassword(String(b.current_password || ''), cust.password_hash))) throw new HttpError(400, '現在のパスワードが違います');
-      await env.DB.prepare('UPDATE customers SET password_hash = ? WHERE id = ?').bind(await hashPassword(b.new_password), cust.id).run();
+      // パスワードを変えたら、この端末以外のログインを解除
+      const cur = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+      await env.DB.batch([
+        env.DB.prepare('UPDATE customers SET password_hash = ? WHERE id = ?').bind(await hashPassword(b.new_password), cust.id),
+        env.DB.prepare('DELETE FROM sessions WHERE customer_id = ? AND token_hash != ?').bind(cust.id, await sha256hex(cur)),
+      ]);
     }
     const name = str(b.name ?? cust.name, 100);
     if (!name) throw new HttpError(400, 'お名前を入力してください');

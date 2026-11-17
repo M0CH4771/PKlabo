@@ -20,7 +20,7 @@
   const HEAD_ALIAS = Object.fromEntries([...CSV_COLS.map(([k, l]) => [l, k]), ...CSV_COLS.map(([k]) => [k, k]),
     ['カード名', 'name'], ['セット', 'set_name'], ['販売価格', 'price'], ['通常価格', 'compare_price'], ['在庫数', 'stock'], ['商品ID', 'id']]);
 
-  let key = sessionStorage.getItem('pk_admin') || '';
+  let key = sessionStorage.getItem('pk_admin_session') || ''; // 12時間で切れるセッション（管理キーそのものは保存しない）
   let tab = 'dash';
   let orderFilter = 'paid';
   let productQ = '';
@@ -31,15 +31,17 @@
   function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2800); }
   async function api(path, opts = {}) {
     const isBlob = opts.body instanceof Blob;
-    const res = await fetch(API + path, { ...opts, headers: { ...(isBlob ? {} : { 'Content-Type': 'application/json' }), 'X-Admin-Key': key, ...(opts.headers || {}) } });
+    const res = await fetch(API + path, { ...opts, headers: { ...(isBlob ? {} : { 'Content-Type': 'application/json' }), ...(key ? { 'X-Admin-Session': key } : {}), ...(opts.headers || {}) } });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) { logout(); throw new Error(data.error || '認証エラー'); }
     if (!res.ok) throw new Error(data.error || '通信エラー');
     return data;
   }
-  function logout() { key = ''; sessionStorage.removeItem('pk_admin'); $('#logout').hidden = true; render(); }
-  $('#logout').onclick = logout;
-  const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  function logout() { key = ''; sessionStorage.removeItem('pk_admin_session'); settings = null; $('#logout').hidden = true; render(); }
+  $('#logout').onclick = async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); logout(); };
+  // Excel で開いたときに =… などが数式として実行されないように先頭に ' を付ける
+  const csvSafe = v => { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s) ? "'" + s : s; };
+  const csvCell = v => `"${csvSafe(v).replace(/"/g, '""')}"`;
   function download(name, rows) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' }));
@@ -60,20 +62,27 @@
   }
   async function uploadFile(f) { const blob = await compress(f); return (await api('/api/admin/images', { method: 'POST', body: blob, headers: { 'Content-Type': blob.type } })).url; }
 
-  function viewLogin() {
+  async function viewLogin() {
+    const info = await fetch(API + '/api/admin/auth-info').then(r => r.json()).catch(() => ({}));
     app.innerHTML = `
       <form id="login" class="form" style="max-width:380px;margin:40px auto">
-        <fieldset><legend>管理キーでログイン</legend>
-          <input type="password" name="k" placeholder="ADMIN_KEY" autocomplete="current-password" required>
+        <fieldset><legend>管理画面にログイン</legend>
+          ${info.ready === false ? '<p class="danger small">ADMIN_KEY が未設定か短すぎます（20文字以上）。README の手順で設定してください。</p>' : ''}
+          <input type="password" name="k" placeholder="管理キー" autocomplete="current-password" required>
+          ${info.totp ? '<input name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="認証アプリの6桁コード" required>' : '<p class="small muted">⚠ 2段階認証が未設定です。README の手順で設定することを強くおすすめします。</p>'}
           <p id="lerr" class="danger small" hidden></p>
           <button class="btn primary block">ログイン</button>
+          <p class="small muted">5回失敗すると15分間ロックされます。ログインは12時間で自動的に切れます。</p>
         </fieldset>
       </form>`;
     $('#login').onsubmit = async e => {
       e.preventDefault();
-      key = e.target.k.value.trim();
-      try { await api('/api/admin/ping'); sessionStorage.setItem('pk_admin', key); render(); }
-      catch (err) { const l = $('#lerr'); l.textContent = err.message; l.hidden = false; }
+      try {
+        const r = await fetch(API + '/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: e.target.k.value.trim(), otp: e.target.otp?.value || '' }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || 'ログインできませんでした');
+        key = d.session; sessionStorage.setItem('pk_admin_session', key); render();
+      } catch (err) { const l = $('#lerr'); l.textContent = err.message; l.hidden = false; }
     };
   }
 
@@ -202,8 +211,9 @@
       h1{font-size:18px;margin:0 0 4px} table{width:100%;border-collapse:collapse;margin:10px 0} th,td{border:1px solid #999;padding:5px 6px;text-align:left}
       td.n{text-align:right;white-space:nowrap} .slip{page-break-after:always;padding-bottom:12px} .slip:last-child{page-break-after:auto}
       .row{display:flex;justify-content:space-between;gap:20px} .box{border:1px solid #999;padding:8px;margin-top:8px} .chk{width:22px}
-      @media print{button{display:none}}</style></head><body><button onclick="print()">印刷する</button>${body}</body></html>`);
+      @media print{button{display:none}}</style></head><body><button id="pr">印刷する</button>${body}</body></html>`);
     w.document.close();
+    w.document.getElementById('pr').addEventListener('click', () => w.print());
   }
   function printPicking(orders) {
     if (!orders.length) { toast('注文を選択してください'); return; }
@@ -636,6 +646,10 @@
     $$('[data-tg]').forEach(b => b.onclick = async () => { const c = list.find(x => x.code === b.dataset.tg); await api('/api/admin/coupons', { method: 'POST', body: JSON.stringify({ ...c, active: c.active ? 0 : 1, ends_at: c.ends_at ? new Date(c.ends_at.replace(' ', 'T') + 'Z').toISOString() : '' }) }); viewCoupons(); });
   }
 
+  const ACTIONS = [[/^PUT settings/, '設定を変更'], [/^POST products\/import/, 'CSVを読み込み'], [/^POST products\/\d+\/stock/, '在庫を増減'], [/^PUT products/, '商品を編集'], [/^POST products/, '商品を追加'], [/^DELETE products/, '商品を削除'],
+    [/^POST images/, '画像をアップロード'], [/^PUT orders/, '注文を更新'], [/^POST oripas/, 'オリパを保存'], [/^DELETE oripas/, 'オリパを削除'], [/^POST coupons/, 'クーポンを保存'], [/^DELETE coupons/, 'クーポンを削除'], [/^POST members\/\d+\/points/, 'ポイントを調整']];
+  const actionLabel = s => { const hit = ACTIONS.find(([re]) => re.test(s)); return hit ? `${hit[1]}（${s}）` : s; };
+
   // ─── 設定 ───
   const FEATURE_LABELS = [
     ['members', '会員登録・ログイン', 'マイページ・注文履歴・住所の保存'],
@@ -726,7 +740,9 @@
           ${ta('l_extra', 'その他', s.legal.extra, 2)}
         </div>
         <div class="savebar"><a class="btn" href="legal.html" target="_blank">特商法ページを確認 ↗</a><button class="btn primary">設定を保存</button></div>
-      </form>`;
+      </form>
+      <details class="fs"><summary><b>管理画面の操作履歴（直近200件）</b></summary><div id="alog" class="overflow" style="max-height:320px"><p class="muted small">読み込み中…</p></div></details>`;
+    api('/api/admin/log').then(rows => { $('#alog').innerHTML = `<table class="t">${rows.map(l => `<tr><td class="small">${jst(l.at)}</td><td class="small mono">${esc(l.ip)}</td><td class="small ${l.action === 'ログイン失敗' ? 'danger' : ''}">${esc(actionLabel(l.action))}</td></tr>`).join('')}</table>`; }).catch(() => {});
     const rowHtml = (a, b) => `<div class="r"><input ${a} value=""><input ${b} value=""><button type="button" class="link danger" data-x>削除</button></div>`;
     const bindX = () => $$('[data-x]').forEach(b => b.onclick = () => b.closest('.r').remove());
     bindX();
