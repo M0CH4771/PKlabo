@@ -668,6 +668,10 @@
         });
       });
       groups.forEach(g => {
+        // 演出は賞ごと：同じ賞の行で最初に書かれた演出をその賞の全行に使う
+        const byRank = {};
+        g.prizes.forEach(p => { const k = p.is_last_one ? '__lo' : String(p.rank).normalize('NFKC').trim(); if (p.fx !== null && !(k in byRank)) byRank[k] = p.fx; });
+        g.prizes.forEach(p => { const k = p.is_last_one ? '__lo' : String(p.rank).normalize('NFKC').trim(); p.fx = k in byRank ? byRank[k] : null; });
         if (!g.title && !g.id) warn.push(`${g.line}行目：オリパ名がありません`);
         if (!g.id && !(+g.price > 0)) warn.push(`「${esc(g.title)}」：1口の価格がありません`);
         g.prizes.filter(p => !p.name).forEach(p => warn.push(`${p.line}行目：賞品名がありません`));
@@ -778,6 +782,22 @@
     const locked = o && o.sold > 0;
     let prizes = v.prizes.map(p => ({ ...p }));
     let image = v.image_url || '';
+    // 演出は賞（ランク）ごと。同じ賞の行はすべて同じ演出になる
+    const rkey = p => p.is_last_one ? '__lo' : String(p.rank || '').normalize('NFKC').trim();
+    const rankFx = {};
+    prizes.forEach(p => { const k = rkey(p); if (!(k in rankFx) && p.fx !== null && p.fx !== undefined && p.fx !== '') rankFx[k] = String(p.fx); });
+    const drawFx = () => {
+      const el = $('#rfx'); if (!el) return;
+      const keys = [...new Set(prizes.filter(p => p.name || p.rank).map(rkey))].filter(k => k !== '');
+      // 「自動」のとき実際に何色になるか（賞の名前・参考価格から）
+      const plain = prizes.map(x => ({ ...x, fx: null }));
+      const autoMap = window.PKOpening ? window.PKOpening.tiers(plain) : new Map();
+      const autoLv = k => { const i = prizes.findIndex(x => rkey(x) === k); return i >= 0 ? autoMap.get(plain[i]) : undefined; };
+      el.innerHTML = keys.length ? keys.map(k => `<label class="fxrow"><span>${esc(k === '__lo' ? 'ラストワン賞' : k)}</span>
+        <select data-rk="${esc(k)}">${FX_OPTS.map(([val, l]) => `<option value="${val}" ${(rankFx[k] ?? '') === val ? 'selected' : ''}>${val === '' && autoLv(k) !== undefined ? `自動（${FX_NAME[autoLv(k)]}）` : l}</option>`).join('')}</select></label>`).join('')
+        : '<p class="small muted">賞を入力すると、ここで賞ごとの演出を選べます。</p>';
+      $$('#rfx [data-rk]').forEach(s => s.onchange = () => { if (s.value === '') delete rankFx[s.dataset.rk]; else rankFx[s.dataset.rk] = s.value; });
+    };
     // 合計・還元率だけ書き換える（入力中の欄を作り直すと1文字ごとにフォーカスが外れるため）
     const sum = () => {
       const pool = prizes.filter(p => !p.is_last_one);
@@ -789,14 +809,13 @@
     };
     const draw = () => {
       $('#prz').innerHTML = `
-        <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>演出</span><span>LO</span><span></span></div>
+        <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>LO</span><span></span></div>
         ${prizes.map((p, i) => `<div class="r p6" data-i="${i}">
           <input data-k="rank" value="${esc(p.rank)}" placeholder="S賞">
           <span style="display:flex;gap:4px"><input data-k="name" value="${esc(p.name)}" placeholder="賞品名"><button type="button" class="btn sm" style="flex:none" data-pick="${i}" title="登録済みの商品から選ぶ">商品</button></span>
           <span style="display:flex;gap:4px"><input data-k="image_url" value="${esc(p.image_url)}" placeholder="https://"><label class="btn sm" style="flex:none">画像<input type="file" accept="image/*" data-up="${i}" hidden></label></span>
           <input data-k="qty" type="number" min="0" value="${p.is_last_one ? 1 : esc(p.qty)}" ${locked || p.is_last_one ? 'disabled' : ''}>
           <input data-k="value" type="number" min="0" value="${esc(p.value)}">
-          <select data-k="fx" title="開封演出（自動＝賞の名前から：B賞=青 A賞=赤 S賞=金 SS賞=虹）">${FX_OPTS.map(([v, l]) => `<option value="${v}" ${String(p.fx ?? '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
           <input data-k="is_last_one" type="checkbox" ${p.is_last_one ? 'checked' : ''} ${locked ? 'disabled' : ''} title="ラストワン賞">
           ${locked ? '<span></span>' : `<button type="button" class="link danger" data-rm="${i}">削除</button>`}
         </div>`).join('')}
@@ -806,8 +825,9 @@
       $$('#prz [data-k]').forEach(inp => inp.oninput = inp.onchange = () => {
         const p = prizes[+inp.closest('[data-i]').dataset.i];
         p[inp.dataset.k] = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : inp.value;
-        if (inp.type === 'checkbox') draw(); else if (inp.dataset.k === 'qty' || inp.dataset.k === 'value') sum();
+        if (inp.type === 'checkbox') draw(); else if (inp.dataset.k === 'qty' || inp.dataset.k === 'value') { sum(); drawFx(); } else if (inp.dataset.k === 'rank' || inp.dataset.k === 'name') drawFx();
       });
+      drawFx();
       $$('#prz [data-rm]').forEach(b => b.onclick = () => { prizes.splice(+b.dataset.rm, 1); draw(); });
       $$('#prz [data-up]').forEach(inp => inp.onchange = async () => { try { toast('アップロード中…'); prizes[+inp.dataset.up].image_url = await uploadFile(inp.files[0]); draw(); } catch (e) { toast(e.message); } });
       const ap = $('#addp'); if (ap) ap.onclick = () => { prizes.push({ rank: '', name: '', qty: 1, value: 0 }); draw(); };
@@ -842,7 +862,9 @@
         <p class="hint2" style="margin:-6px 0 0">総口数ぶんのパックがボードに並び、お客様が番号を選んで開けます。開けられたパックには中身が表示されます。中身は開けた瞬間に抽選するので、どのパックを選んでも確率は同じです。「オリパをコインで引く」がONのときだけ使えます（2,000口まで）。${locked ? '販売開始後は変更できません。' : ''}</p>
         <div><b class="small">バナー画像</b><div class="imgs" id="oimg"></div></div>
         <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
-        <div class="fs" style="background:var(--bg)"><h3>封入内容</h3><p class="hint2">ハズレ枠も「C賞 ノーマル5枚」のように賞品として登録してください（総口数＝封入数の合計）。LO＝ラストワン賞（最後の1口を引いた人に追加でプレゼント）。</p><div class="rows" id="prz"></div></div>
+        <div class="fs" style="background:var(--bg)"><h3>封入内容</h3><p class="hint2">ハズレ枠も「C賞 ノーマル5枚」のように賞品として登録してください（総口数＝封入数の合計）。LO＝ラストワン賞（最後の1口を引いた人に追加でプレゼント）。</p><div class="rows" id="prz"></div>
+          <h3 style="margin-top:6px">賞ごとの開封演出</h3><p class="hint2">同じ賞の行はすべて同じ演出になります。「自動」は賞の名前から決まります（B賞＝青、A賞＝赤、S賞＝金、SS賞＝虹）。青以上は大きく表示され、青→赤→金→虹の順に上がってからめくれます。</p>
+          <div class="fxgrid" id="rfx"></div></div>
         <div class="row-between"><span>${o ? '<button type="button" class="link danger" id="odel">削除</button>' : ''}</span>
           <div style="display:flex;gap:8px"><button type="button" class="btn" id="otest">試し引き</button><button type="button" class="btn" id="ocancel">閉じる</button><button class="btn primary">保存</button></div></div>
       </form>`;
@@ -861,6 +883,7 @@
     $('#of').onsubmit = async e => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
+      prizes.forEach(p => { const k = rkey(p); p.fx = k in rankFx ? +rankFx[k] : null; });
       const body = { ...fd, id: o?.id, pick_mode: locked ? o.pick_mode : !!fd.pick_mode, price: locked ? o.price : fd.price, image_url: image, starts_at: fromLocalInput(fd.starts_at), ends_at: fromLocalInput(fd.ends_at), prizes };
       if (body.status === 'live' && prizes.some(p => !p.name)) { toast('賞品名が空の行があります'); return; }
       try { const r = await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify(body) }); d.close(); toast(r.note || '保存しました'); viewOripa(); } catch (err) { toast(err.message); }
