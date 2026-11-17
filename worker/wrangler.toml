@@ -7,6 +7,11 @@ binding = "DB"
 database_name = "pklabo-db"
 database_id = "ここに d1 create で表示された ID を貼る"
 
+# 画像を R2 に置く場合（任意）。無ければ D1 に保存されます
+# [[r2_buckets]]
+# binding = "IMAGES"
+# bucket_name = "pklabo-images"
+
 # 入金期限切れ注文の自動キャンセル（15分ごと）
 [triggers]
 crons = ["*/15 * * * *"]
@@ -21,6 +26,14 @@ SHIPPING_FEE = "230"
 FREE_SHIPPING_OVER = "10000"
 PAYMENT_DAYS = "3"
 MAX_QTY_PER_ITEM = "10"
+# この時刻(日本時間)までの入金確認・カード決済で当日発送。発送する曜日 (0=日 1=月 … 6=土)
+SHIP_CUTOFF_HOUR = "13"
+SHIP_DAYS = "1,2,3,4,5,6"
+# 店頭受け取り（送料無料）
+PICKUP_ENABLED = "true"
+PICKUP_INFO = "ポケカ買取ラボ店頭にてお渡しします。営業時間内にご来店ください。（住所・営業時間をここに記入）"
+# 商品ページの「このカードを売る」から飛ぶ買取フォーム
+BUYBACK_URL = "https://mocha0908.github.io/PKlab/"
 BANK_INFO = """
 〇〇銀行 〇〇支店
 普通 1234567
@@ -31,5 +44,5 @@ BANK_INFO = """
 # npx wrangler secret put ADMIN_KEY             （必須）管理画面のログインキー
 # npx wrangler secret put STRIPE_SECRET_KEY     （任意）入れるとカード決済が有効になる
 # npx wrangler secret put STRIPE_WEBHOOK_SECRET （任意）Stripe の Webhook 署名シークレット
-# npx wrangler secret put RESEND_API_KEY        （任意）注文メール送信
+# npx wrangler secret put RESEND_API_KEY        （任意）注文メール・入荷通知メール
 # MAIL_FROM / ADMIN_EMAIL / DISCORD_WEBHOOK_URL も secret か vars で設定（任意）

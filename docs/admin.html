@@ -8,34 +8,51 @@
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <style>
-  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
-  .tabs button { border: 1px solid var(--line); background: #fff; padding: 8px 16px; border-radius: 999px; font-weight: 600; cursor: pointer; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
+  .tabs button { flex: none; border: 1px solid var(--line); background: #fff; padding: 8px 16px; border-radius: 999px; font-weight: 700; cursor: pointer; font-family: inherit; }
   .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .tabs .badge { position: static; display: inline-grid; margin-left: 4px; }
   .panel { background: #fff; border-radius: var(--radius); padding: 14px; }
   .orders { display: grid; gap: 10px; }
-  .order { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
+  .order { background: #fff; border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
   .order .items { font-size: 13px; background: var(--bg); padding: 8px 10px; border-radius: 8px; }
   .order .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .order input { width: 180px; padding: 6px 10px; font-size: 14px; }
+  .order input.trk { width: 170px; padding: 6px 10px; font-size: 14px; }
+  .order select { padding: 6px 26px 6px 10px; font-size: 13px; }
   .order textarea { font-size: 13px; padding: 6px 10px; }
+  .order .sel { display: flex; align-items: center; gap: 8px; }
   .hint { background: #fff8e1; border-radius: 6px; padding: 4px 8px; font-size: 12.5px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; }
-  td.num { text-align: right; white-space: nowrap; }
+  .pill { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #eef2fb; color: var(--blue); }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .t th, .t td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  .t th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .t td.num, .t th.num { text-align: right; white-space: nowrap; }
   tr.off td { opacity: .45; }
   .thumb { width: 36px; aspect-ratio: 5/7; object-fit: contain; background: #f0f0f2; border-radius: 4px; }
   .stockctl { display: inline-flex; align-items: center; gap: 4px; }
   .stockctl button { width: 26px; height: 26px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
-  dialog { border: none; border-radius: var(--radius); padding: 0; width: min(560px, 94vw); }
-  dialog::backdrop { background: rgba(0,0,0,.4); }
-  dialog form { padding: 18px; display: grid; gap: 10px; }
+  dialog.ed { border: none; border-radius: var(--radius); padding: 0; width: min(620px, 96vw); }
+  dialog.ed form { padding: 18px; display: grid; gap: 10px; max-height: 90vh; overflow-y: auto; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .form label { font-weight: 600; }
-  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-  .stat { background: #fff; border-radius: 10px; padding: 10px 14px; min-width: 120px; }
-  .stat b { display: block; font-size: 20px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .stat { background: #fff; border-radius: 12px; padding: 12px 14px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat .sub2 { font-size: 12px; color: var(--muted); }
   .overflow { overflow-x: auto; }
+  .imgs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .imgs .im { position: relative; width: 70px; }
+  .imgs img { width: 70px; aspect-ratio: 5/7; object-fit: cover; border-radius: 6px; background: #eee; }
+  .imgs .im button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: var(--ink); color: #fff; cursor: pointer; font-size: 12px; }
+  .imgs .im .main { position: absolute; bottom: 2px; left: 2px; font-size: 9px; background: var(--accent); color: #fff; padding: 0 4px; border-radius: 3px; }
+  .upl { width: 70px; aspect-ratio: 5/7; border: 2px dashed var(--line); border-radius: 6px; display: grid; place-items: center; font-size: 11px; color: var(--muted); cursor: pointer; text-align: center; }
+  .upl input { display: none; }
+  .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 10px; }
+  .bars div { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+  .bars div:hover::after { content: attr(data-t); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+  .two { display: grid; gap: 12px; }
+  @media (min-width: 800px) { .two { grid-template-columns: 1fr 1fr; } }
+  .toolbar2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -45,30 +62,35 @@
 </header>
 <main class="container" id="app"></main>
 <div id="toast" class="toast" hidden></div>
-
-<dialog id="dlg"></dialog>
+<dialog id="dlg" class="ed"></dialog>
 
 <script>
 (() => {
   const API = window.PKLABO.API_BASE.replace(/\/$/, '');
+  const SHOP = window.PKLABO.SHOP_NAME;
   const app = document.getElementById('app');
   const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
-  const jst = utc => utc ? new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-  const STATUS = { awaiting_payment: '入金待ち', paid: '入金確認済み', shipped: '発送済み', cancelled: 'キャンセル', expired: '期限切れ' };
+  const jst = (utc, o = { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) => utc ? new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', ...o }) : '';
+  const norm = s => String(s ?? '').normalize('NFKC').toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/\s/g, '');
+  const STATUS = { awaiting_payment: '入金待ち', paid: '発送待ち', shipped: '発送済み', cancelled: 'キャンセル', expired: '期限切れ' };
   const CATS = { single: 'シングル', psa: 'PSA鑑定品', box: 'BOX・パック', supply: 'サプライ' };
-  const FIELDS = ['name', 'set_name', 'card_no', 'rarity', 'condition', 'category', 'price', 'stock', 'image_url', 'description', 'active', 'sort'];
+  const CARRIERS = { japanpost: '日本郵便', yamato: 'ヤマト運輸', sagawa: '佐川急便' };
+  const FIELDS = ['name', 'set_name', 'card_no', 'rarity', 'condition', 'category', 'price', 'compare_price', 'buy_price', 'stock', 'image_url', 'images', 'real_photo', 'description', 'active', 'sort'];
 
   let key = sessionStorage.getItem('pk_admin') || '';
-  let tab = 'orders';
-  let orderFilter = 'awaiting_payment';
+  let tab = 'dash';
+  let orderFilter = 'paid';
   let productQ = '';
   let productsCache = [];
+  let ordersCache = [];
 
-  function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2400); }
+  function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2600); }
   async function api(path, opts = {}) {
-    const res = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key, ...(opts.headers || {}) } });
+    const isBody = opts.body instanceof Blob;
+    const res = await fetch(API + path, { ...opts, headers: { ...(isBody ? {} : { 'Content-Type': 'application/json' }), 'X-Admin-Key': key, ...(opts.headers || {}) } });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) { logout(); throw new Error(data.error || '認証エラー'); }
     if (!res.ok) throw new Error(data.error || '通信エラー');
@@ -76,6 +98,12 @@
   }
   function logout() { key = ''; sessionStorage.removeItem('pk_admin'); $('#logout').hidden = true; render(); }
   $('#logout').onclick = logout;
+  function download(name, text) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' }));
+    a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  const csvCell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
   function viewLogin() {
     app.innerHTML = `
@@ -97,60 +125,99 @@
   function shell(inner) {
     app.innerHTML = `
       <div class="tabs">
-        <button data-tab="orders" class="${tab === 'orders' ? 'on' : ''}">注文</button>
-        <button data-tab="products" class="${tab === 'products' ? 'on' : ''}">商品</button>
-        <button data-tab="import" class="${tab === 'import' ? 'on' : ''}">CSV一括登録</button>
-        <a class="btn sm" href="index.html" target="_blank" style="margin-left:auto">ショップを開く ↗</a>
+        ${[['dash', 'ダッシュボード'], ['orders', '注文'], ['products', '商品'], ['import', 'CSV一括登録'], ['coupons', 'クーポン']].map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}
+        <a class="btn sm" href="index.html" target="_blank" style="margin-left:auto;flex:none">ショップ ↗</a>
       </div>
       <div id="body">${inner}</div>`;
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+    $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+  }
+
+  // ─── ダッシュボード ───
+  async function viewDash() {
+    shell('<p class="muted">読み込み中…</p>');
+    const s = await api('/api/admin/stats');
+    const days = [];
+    for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() + 9 * 3600e3 - i * 864e5).toISOString().slice(0, 10); days.push(d); }
+    const map = Object.fromEntries(s.daily.map(d => [d.d, d]));
+    const max = Math.max(1, ...s.daily.map(d => d.sales));
+    $('#body').innerHTML = `
+      <div class="stats">
+        <div class="stat"><span class="sub2">今日（24時間）</span><b>${yen(s.today.sales)}</b><span class="sub2">${s.today.orders}件</span></div>
+        <div class="stat"><span class="sub2">7日間</span><b>${yen(s.week.sales)}</b><span class="sub2">${s.week.orders}件</span></div>
+        <div class="stat"><span class="sub2">30日間</span><b>${yen(s.month.sales)}</b><span class="sub2">${s.month.orders}件・客単価${s.month.orders ? yen(Math.round(s.month.sales / s.month.orders)) : '-'}</span></div>
+        <div class="stat" style="cursor:pointer" data-go="awaiting_payment"><span class="sub2">入金待ち</span><b>${s.status.awaiting_payment || 0}件</b></div>
+        <div class="stat" style="cursor:pointer" data-go="paid"><span class="sub2">発送待ち</span><b class="${s.status.paid ? 'danger' : ''}">${s.status.paid || 0}件</b></div>
+        <div class="stat"><span class="sub2">公開中の在庫</span><b>${s.stock.units}点</b><span class="sub2">${s.stock.items}商品・販売額${yen(s.stock.value)}</span></div>
+      </div>
+      <div class="panel" style="margin-bottom:12px"><b>30日間の売上（入金済み）</b>
+        <div class="bars">${days.map(d => { const v = map[d]?.sales || 0; return `<div style="height:${Math.round(v / max * 100)}%" data-t="${d.slice(5)} ${yen(v)}"></div>`; }).join('')}</div>
+        <div class="row-between small muted"><span>${days[0].slice(5)}</span><span>今日</span></div>
+      </div>
+      <div class="two">
+        <div class="panel"><b>売れ筋（30日）</b>
+          <table class="t">${s.top.map(p => `<tr><td>${esc(p.name)} <span class="muted small">${esc(p.card_no)} ${esc(p.condition)}</span></td><td class="num">${p.sold}点</td><td class="num ${p.stock ? '' : 'danger'}">在庫${p.stock}</td></tr>`).join('') || '<tr><td class="muted">まだありません</td></tr>'}</table>
+        </div>
+        <div class="panel"><b>入荷待ちの多い商品</b> <span class="muted small">在庫を入れると自動でメールが届きます</span>
+          <table class="t">${s.waiting.map(p => `<tr><td>${esc(p.name)} <span class="muted small">${esc(p.card_no)} ${esc(p.condition)}</span></td><td class="num">${p.waiting}人</td></tr>`).join('') || '<tr><td class="muted">ありません</td></tr>'}</table>
+        </div>
+      </div>`;
+    $$('[data-go]').forEach(b => b.onclick = () => { orderFilter = b.dataset.go; tab = 'orders'; render(); });
   }
 
   // ─── 注文 ───
   async function viewOrders() {
     shell('<p class="muted">読み込み中…</p>');
-    const all = await api('/api/admin/orders');
+    ordersCache = await api('/api/admin/orders');
+    drawOrders();
+  }
+  function drawOrders() {
+    const all = ordersCache;
     const count = s => all.filter(o => o.status === s).length;
     const list = orderFilter === 'all' ? all : all.filter(o => o.status === orderFilter);
     $('#body').innerHTML = `
-      <div class="stats">
-        <div class="stat"><span class="small muted">入金待ち</span><b>${count('awaiting_payment')}</b></div>
-        <div class="stat"><span class="small muted">発送待ち</span><b>${count('paid')}</b></div>
-        <div class="stat"><span class="small muted">発送済み（直近）</span><b>${count('shipped')}</b></div>
-      </div>
-      <div class="chips" style="margin-bottom:10px">
+      <div class="chips" style="padding-top:0">
         ${[['awaiting_payment', '入金待ち'], ['paid', '発送待ち'], ['shipped', '発送済み'], ['cancelled', 'キャンセル'], ['expired', '期限切れ'], ['all', 'すべて']]
-          .map(([k, l]) => `<button class="chip ${orderFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}
+          .map(([k, l]) => `<button class="chip ${orderFilter === k ? 'on' : ''}" data-f="${k}">${l}${['awaiting_payment', 'paid'].includes(k) && count(k) ? `（${count(k)}）` : ''}</button>`).join('')}
       </div>
+      ${orderFilter === 'paid' && list.length ? `
+        <div class="toolbar2">
+          <label class="check"><input type="checkbox" id="selall" checked> すべて選択</label>
+          <button class="btn sm" id="pick">ピッキングリスト</button>
+          <button class="btn sm" id="slip">納品書を印刷</button>
+          <button class="btn sm" id="csv">発送用CSV</button>
+        </div>` : ''}
       <div class="orders">
         ${list.map(o => `
           <div class="order" data-id="${o.id}">
             <div class="row-between">
-              <strong class="mono">${esc(o.order_no)}</strong>
+              <span class="sel">${orderFilter === 'paid' ? `<input type="checkbox" class="osel" checked>` : ''}<strong class="mono">${esc(o.order_no)}</strong>
+                ${o.shipping_method === 'pickup' ? '<span class="pill">店頭受取</span>' : ''}${o.coupon_code ? `<span class="pill">${esc(o.coupon_code)}</span>` : ''}</span>
               <span class="status s-${esc(o.status)}">${STATUS[o.status]}</span>
             </div>
-            <div class="small">${jst(o.created_at)}　${o.payment_method === 'bank' ? '銀行振込' : 'カード'}　<strong>${yen(o.total)}</strong>（送料${yen(o.shipping_fee)}）</div>
-            ${o.payment_method === 'bank' && o.status === 'awaiting_payment' ? `<div class="hint">振込名義の目印：<b>${esc(o.order_no.replace('PK', ''))}</b> ${esc(o.kana || o.name)}　期限 ${jst(o.expires_at)}</div>` : ''}
-            <div class="small">${esc(o.name)}${o.kana ? `（${esc(o.kana)}）` : ''} ／ ${esc(o.phone)} ／ ${esc(o.email)}<br>〒${esc(o.zip)} ${esc(o.address)}</div>
+            <div class="small">${jst(o.created_at)}　${o.payment_method === 'bank' ? '銀行振込' : 'カード'}　<strong>${yen(o.total)}</strong>${o.discount ? `（割引-${yen(o.discount)}）` : ''}（送料${yen(o.shipping_fee)}）</div>
+            ${o.payment_method === 'bank' && o.status === 'awaiting_payment' ? `<div class="hint">振込名義の目印：<b>${esc(o.order_no.replace('PK', ''))}</b> ${esc(o.kana || o.name)}　金額 <b>${yen(o.total)}</b>　期限 ${jst(o.expires_at)}</div>` : ''}
+            <div class="small">${esc(o.name)}${o.kana ? `（${esc(o.kana)}）` : ''} ／ ${esc(o.phone)} ／ ${esc(o.email)}${o.shipping_method === 'pickup' ? '' : `<br>〒${esc(o.zip)} ${esc(o.address)}`}</div>
             ${o.note ? `<div class="small">備考：${esc(o.note)}</div>` : ''}
-            <div class="items">${o.items.map(i => `${esc(i.name)} ${yen(i.price)} × ${i.qty}`).join('<br>')}</div>
+            <div class="items">${o.items.map(i => `${esc(i.name)} ${esc(i.card_no)} [${esc(i.condition)}] ${yen(i.price)} × ${i.qty}`).join('<br>')}</div>
             <textarea class="memo" rows="1" placeholder="社内メモ">${esc(o.admin_memo)}</textarea>
             <div class="actions">
               ${o.status === 'awaiting_payment' ? `<button class="btn sm primary" data-act="paid">入金確認</button>` : ''}
-              ${o.status === 'paid' ? `<input class="trk" placeholder="追跡番号" value="${esc(o.tracking_no)}"><button class="btn sm primary" data-act="shipped">発送済みにする</button>` : ''}
-              ${o.status === 'shipped' && o.tracking_no ? `<span class="small">追跡番号 <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
+              ${o.status === 'paid' ? (o.shipping_method === 'pickup' ? `<button class="btn sm primary" data-act="shipped">受取準備完了を通知</button>` : `
+                <select class="car">${Object.entries(CARRIERS).map(([k, l]) => `<option value="${k}" ${o.carrier === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+                <input class="trk" placeholder="追跡番号" value="${esc(o.tracking_no)}" inputmode="numeric"><button class="btn sm primary" data-act="shipped">発送済みにする</button>`) : ''}
+              ${o.status === 'shipped' && o.tracking_no ? `<span class="small">${esc(CARRIERS[o.carrier] || '')} <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
               ${['awaiting_payment', 'paid'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">キャンセル（在庫を戻す）</button>` : ''}
               <button class="btn sm" data-act="memo">メモ保存</button>
             </div>
           </div>`).join('') || '<p class="muted pad center">該当する注文はありません</p>'}
       </div>`;
-    app.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { orderFilter = b.dataset.f; viewOrders(); });
-    app.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+    $$('[data-f]').forEach(b => b.onclick = () => { orderFilter = b.dataset.f; drawOrders(); });
+    $$('[data-act]').forEach(b => b.onclick = async () => {
       const card = b.closest('.order'); const id = card.dataset.id; const act = b.dataset.act;
       const body = { admin_memo: $('.memo', card).value };
       if (act === 'cancelled' && !confirm('この注文をキャンセルして在庫を戻しますか？\n（カード決済済みの場合、返金はStripeの管理画面で行ってください）')) return;
-      if (act === 'shipped') {
-        body.tracking_no = $('.trk', card).value.trim();
+      if (act === 'shipped' && $('.trk', card)) {
+        body.tracking_no = $('.trk', card).value.trim(); body.carrier = $('.car', card).value;
         if (!body.tracking_no && !confirm('追跡番号なしで発送済みにしますか？')) return;
       }
       if (act !== 'memo') body.status = act;
@@ -158,6 +225,55 @@
       try { await api(`/api/admin/orders/${id}`, { method: 'PUT', body: JSON.stringify(body) }); toast('更新しました'); viewOrders(); }
       catch (e) { toast(e.message); b.disabled = false; }
     });
+    const sel = () => $$('.osel').filter(c => c.checked).map(c => ordersCache.find(o => o.id === +c.closest('.order').dataset.id));
+    const sa = $('#selall'); if (sa) sa.onchange = () => $$('.osel').forEach(c => c.checked = sa.checked);
+    const pk = $('#pick'); if (pk) pk.onclick = () => printPicking(sel());
+    const sl = $('#slip'); if (sl) sl.onclick = () => printSlips(sel());
+    const cv = $('#csv'); if (cv) cv.onclick = () => {
+      const rows = sel().filter(o => o.shipping_method !== 'pickup');
+      const head = ['注文番号', 'お届け先郵便番号', 'お届け先住所', 'お届け先氏名', 'お届け先電話番号', '品名', '合計金額'];
+      download(`shipping_${new Date().toISOString().slice(0, 10)}.csv`, [head, ...rows.map(o => [o.order_no, o.zip, o.address, o.name, o.phone, 'トレーディングカード', o.total])].map(r => r.map(csvCell).join(',')).join('\r\n'));
+    };
+  }
+
+  function printWindow(title, body) {
+    const w = window.open('', '_blank');
+    if (!w) { toast('ポップアップを許可してください'); return; }
+    w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+      body{font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;font-size:12px;margin:18px;color:#111}
+      h1{font-size:18px;margin:0 0 4px} table{width:100%;border-collapse:collapse;margin:10px 0} th,td{border:1px solid #999;padding:5px 6px;text-align:left}
+      td.n{text-align:right;white-space:nowrap} .slip{page-break-after:always;padding-bottom:12px} .slip:last-child{page-break-after:auto}
+      .row{display:flex;justify-content:space-between;gap:20px} .box{border:1px solid #999;padding:8px;margin-top:8px} .chk{width:22px}
+      @media print{button{display:none}}</style></head><body><button onclick="print()">印刷する</button>${body}</body></html>`);
+    w.document.close();
+  }
+  function printPicking(orders) {
+    if (!orders.length) { toast('注文を選択してください'); return; }
+    const agg = new Map();
+    orders.forEach(o => o.items.forEach(i => {
+      const k = i.product_id; const a = agg.get(k) || { ...i, qty: 0, orders: [] };
+      a.qty += i.qty; a.orders.push(`${o.order_no}×${i.qty}`); agg.set(k, a);
+    }));
+    const rows = [...agg.values()].sort((a, b) => String(a.card_no).localeCompare(String(b.card_no)) || a.name.localeCompare(b.name));
+    printWindow('ピッキングリスト', `<h1>ピッキングリスト</h1><div>${new Date().toLocaleString('ja-JP')}　注文${orders.length}件・${rows.reduce((s, r) => s + r.qty, 0)}点</div>
+      <table><tr><th class="chk">✓</th><th>商品名</th><th>型番</th><th>状態</th><th>数量</th><th>注文</th></tr>
+      ${rows.map(r => `<tr><td></td><td>${esc(r.name)}</td><td>${esc(r.card_no)}</td><td>${esc(r.condition)}</td><td class="n"><b>${r.qty}</b></td><td>${esc(r.orders.join(', '))}</td></tr>`).join('')}</table>`);
+  }
+  function printSlips(orders) {
+    if (!orders.length) { toast('注文を選択してください'); return; }
+    printWindow('納品書', orders.map(o => `
+      <div class="slip">
+        <div class="row"><div><h1>納品書</h1>注文番号 ${esc(o.order_no)}<br>ご注文日 ${jst(o.created_at, { year: 'numeric', month: 'numeric', day: 'numeric' })}</div>
+          <div style="text-align:right"><b>${esc(SHOP)}</b><br>${esc(window.PKLABO.KOBUTSU)}</div></div>
+        <div class="box">${o.shipping_method === 'pickup' ? '店頭受け取り' : `〒${esc(o.zip)}<br>${esc(o.address)}`}<br><b style="font-size:14px">${esc(o.name)} 様</b></div>
+        <table><tr><th class="chk">✓</th><th>商品</th><th>状態</th><th>単価</th><th>数量</th><th>小計</th></tr>
+          ${o.items.map(i => `<tr><td></td><td>${esc(i.name)} ${esc(i.card_no)}</td><td>${esc(i.condition)}</td><td class="n">${yen(i.price)}</td><td class="n">${i.qty}</td><td class="n">${yen(i.price * i.qty)}</td></tr>`).join('')}
+          <tr><td colspan="5" class="n">小計</td><td class="n">${yen(o.subtotal)}</td></tr>
+          ${o.discount ? `<tr><td colspan="5" class="n">クーポン割引</td><td class="n">-${yen(o.discount)}</td></tr>` : ''}
+          <tr><td colspan="5" class="n">送料</td><td class="n">${yen(o.shipping_fee)}</td></tr>
+          <tr><td colspan="5" class="n"><b>合計（税込）</b></td><td class="n"><b>${yen(o.total)}</b></td></tr></table>
+        <div>この度はご注文いただき誠にありがとうございました。商品に不備がございましたら、到着後7日以内にご連絡ください。</div>
+      </div>`).join(''));
   }
 
   // ─── 商品 ───
@@ -167,27 +283,31 @@
     drawProducts();
   }
   function drawProducts() {
-    const q = productQ.trim().toLowerCase();
-    const list = productsCache.filter(p => !q || [p.name, p.set_name, p.card_no, p.rarity].join(' ').toLowerCase().includes(q));
+    const terms = productQ.trim().split(/\s+/).map(norm).filter(Boolean);
+    const list = productsCache.filter(p => { const h = norm([p.name, p.set_name, p.card_no, p.rarity, p.condition].join(' ')); return terms.every(t => h.includes(t)); });
     $('#body').innerHTML = `
-      <div class="row-between" style="margin-bottom:10px;gap:8px">
-        <input id="pq" type="search" placeholder="検索" value="${esc(productQ)}" style="max-width:320px">
+      <div class="toolbar2">
+        <input id="pq" type="search" placeholder="検索（名前・型番・弾）" value="${esc(productQ)}" style="max-width:320px">
         <button class="btn primary sm" id="new">＋ 商品を追加</button>
+        <button class="btn sm" id="exp">CSV書き出し</button>
       </div>
       <p class="small muted">${list.length}件 ／ 在庫合計 ${list.reduce((s, p) => s + p.stock, 0)}点</p>
       <div class="panel overflow">
-        <table>
-          <thead><tr><th></th><th>商品名</th><th>型番</th><th>状態</th><th style="text-align:right">価格</th><th style="text-align:right">在庫</th><th></th></tr></thead>
+        <table class="t">
+          <thead><tr><th></th><th>商品名</th><th>型番</th><th>状態</th><th class="num">価格</th><th class="num">買取</th><th class="num">在庫</th><th class="num">売上30日</th><th></th></tr></thead>
           <tbody>
             ${list.map(p => `
               <tr class="${p.active ? '' : 'off'}" data-id="${p.id}">
                 <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}" alt="">` : ''}</td>
-                <td><b>${esc(p.name)}</b><br><span class="muted small">${esc(CATS[p.category] || p.category)} ${esc(p.set_name)} ${esc(p.rarity)}${p.active ? '' : ' ・非公開'}</span></td>
+                <td><b>${esc(p.name)}</b>${p.real_photo ? ' <span class="pill">実物</span>' : ''}<br><span class="muted small">${esc(CATS[p.category] || p.category)} ${esc(p.set_name)} ${esc(p.rarity)}${p.active ? '' : ' ・非公開'}</span>
+                  ${p.waiting ? `<br><span class="danger small">入荷待ち ${p.waiting}人</span>` : ''}</td>
                 <td class="small">${esc(p.card_no)}</td>
                 <td class="small">${esc(p.condition)}</td>
-                <td class="num">${yen(p.price)}</td>
+                <td class="num">${yen(p.price)}${p.compare_price > p.price ? `<br><s class="muted small">${yen(p.compare_price)}</s>` : ''}</td>
+                <td class="num small">${p.buy_price ? yen(p.buy_price) : '-'}</td>
                 <td class="num"><span class="stockctl"><button data-st="-1">−</button><b>${p.stock}</b><button data-st="1">＋</button></span></td>
-                <td><button class="link" data-edit>編集</button></td>
+                <td class="num small">${p.sold || ''}</td>
+                <td><button class="link" data-edit>編集</button> <button class="link" data-dup>複製</button></td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -195,40 +315,82 @@
     const pq = $('#pq');
     pq.oninput = () => { productQ = pq.value; clearTimeout(drawProducts._t); drawProducts._t = setTimeout(() => { drawProducts(); const n = $('#pq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     $('#new').onclick = () => editProduct(null);
-    app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editProduct(productsCache.find(p => p.id === +b.closest('tr').dataset.id)));
-    app.querySelectorAll('[data-st]').forEach(b => b.onclick = async () => {
+    $('#exp').onclick = () => {
+      const cols = ['id', ...FIELDS];
+      download(`products_${new Date().toISOString().slice(0, 10)}.csv`, [cols, ...productsCache.map(p => cols.map(c => c === 'images' ? (p.images || []).join(' ') : p[c]))].map(r => r.map(csvCell).join(',')).join('\r\n'));
+    };
+    $$('[data-edit]').forEach(b => b.onclick = () => editProduct(productsCache.find(p => p.id === +b.closest('tr').dataset.id)));
+    $$('[data-dup]').forEach(b => b.onclick = () => { const p = productsCache.find(p => p.id === +b.closest('tr').dataset.id); editProduct({ ...p, id: undefined, stock: 1, image_url: '', images: [], real_photo: 0 }, true); });
+    $$('[data-st]').forEach(b => b.onclick = async () => {
       const p = productsCache.find(x => x.id === +b.closest('tr').dataset.id);
-      try { const r = await api(`/api/admin/products/${p.id}/stock`, { method: 'POST', body: JSON.stringify({ delta: +b.dataset.st }) }); p.stock = r.stock; drawProducts(); }
+      try { const r = await api(`/api/admin/products/${p.id}/stock`, { method: 'POST', body: JSON.stringify({ delta: +b.dataset.st }) }); p.stock = r.stock; if (r.notified) { toast(`入荷通知を${r.notified}人に送りました`); p.waiting = 0; } drawProducts(); }
       catch (e) { toast(e.message); }
     });
   }
 
-  function editProduct(p) {
+  // 画像をブラウザ内で縮小して WebP にする
+  async function compress(file) {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+    const img = bmp || await new Promise((ok, ng) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ng; i.src = URL.createObjectURL(file); });
+    const max = 1000; const r = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let blob = await new Promise(ok => c.toBlob(ok, 'image/webp', 0.82));
+    if (!blob || blob.type !== 'image/webp') blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.85));
+    return blob;
+  }
+
+  function editProduct(p, isDup) {
     const d = $('#dlg');
-    const v = p || { category: 'single', condition: 'A', active: 1, stock: 1, price: 0, sort: 0 };
+    const v = p || { category: 'single', condition: 'A', active: 1, stock: 1, price: 0, sort: 0, images: [] };
+    let imgs = [v.image_url, ...(v.images || [])].filter(Boolean);
+    const editing = p && !isDup;
     d.innerHTML = `
       <form method="dialog" class="form" id="pf">
-        <h2 style="margin:0">${p ? '商品を編集' : '商品を追加'}</h2>
+        <h2 style="margin:0">${editing ? '商品を編集' : '商品を追加'}</h2>
+        <div><b class="small">写真</b> <span class="muted small">（スマホで撮影してそのまま追加できます・1枚目がメイン）</span>
+          <div class="imgs" id="imgs"></div></div>
+        <label class="check"><input type="checkbox" name="real_photo" ${v.real_photo ? 'checked' : ''}> 実物写真（届くカードそのものを撮影）</label>
         <label>商品名 *<input name="name" required value="${esc(v.name)}"></label>
         <div class="grid2">
           <label>カテゴリ<select name="category" style="width:100%">${Object.entries(CATS).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-          <label>弾・セット<input name="set_name" value="${esc(v.set_name)}"></label>
+          <label>弾・セット<input name="set_name" value="${esc(v.set_name)}" list="sets"></label>
           <label>型番<input name="card_no" value="${esc(v.card_no)}" placeholder="201/165"></label>
-          <label>レアリティ<input name="rarity" value="${esc(v.rarity)}" placeholder="SAR"></label>
+          <label>レアリティ<input name="rarity" value="${esc(v.rarity)}" placeholder="SAR" list="rars"></label>
           <label>状態<input name="condition" value="${esc(v.condition)}" placeholder="A / PSA10" list="conds"></label>
-          <label>表示順（大きいほど上）<input name="sort" type="number" value="${esc(v.sort)}"></label>
-          <label>価格（税込） *<input name="price" type="number" min="0" required value="${esc(v.price)}"></label>
           <label>在庫 *<input name="stock" type="number" min="0" required value="${esc(v.stock)}"></label>
         </div>
-        <datalist id="conds"><option>S</option><option>A</option><option>B</option><option>C</option><option>PSA10</option><option>PSA9</option><option>未開封</option></datalist>
-        <label>画像URL<input name="image_url" value="${esc(v.image_url)}" placeholder="https://..."></label>
-        <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
-        <label class="check"><input type="checkbox" name="active" ${v.active ? 'checked' : ''}> ショップに公開する</label>
+        <div class="grid3">
+          <label>販売価格 *<input name="price" type="number" min="0" required value="${esc(v.price)}"></label>
+          <label>値下げ前の価格<input name="compare_price" type="number" min="0" value="${esc(v.compare_price || '')}" placeholder="セール時のみ"></label>
+          <label>買取価格<input name="buy_price" type="number" min="0" value="${esc(v.buy_price || '')}" placeholder="表示する場合"></label>
+        </div>
+        <datalist id="conds"><option>S</option><option>A</option><option>B</option><option>C</option><option>PSA10</option><option>PSA9</option><option>未開封</option><option>新品</option></datalist>
+        <datalist id="sets">${[...new Set(productsCache.map(x => x.set_name).filter(Boolean))].map(s => `<option>${esc(s)}</option>`).join('')}</datalist>
+        <datalist id="rars">${[...new Set(productsCache.map(x => x.rarity).filter(Boolean))].map(s => `<option>${esc(s)}</option>`).join('')}</datalist>
+        <label>説明<textarea name="description" rows="3" placeholder="センタリング・傷の位置など">${esc(v.description)}</textarea></label>
+        <div class="grid2">
+          <label>表示順（大きいほど上）<input name="sort" type="number" value="${esc(v.sort)}"></label>
+          <label class="check" style="align-self:end"><input type="checkbox" name="active" ${v.active ? 'checked' : ''}> ショップに公開する</label>
+        </div>
         <div class="row-between">
-          ${p ? '<button type="button" class="link danger" id="del">削除</button>' : '<span></span>'}
+          ${editing ? '<button type="button" class="link danger" id="del">削除</button>' : '<span></span>'}
           <div style="display:flex;gap:8px"><button type="button" class="btn" id="cancel">閉じる</button><button class="btn primary" id="save">保存</button></div>
         </div>
       </form>`;
+    const drawImgs = () => {
+      $('#imgs').innerHTML = imgs.map((u, i) => `<div class="im"><img src="${esc(u)}" alt="">${i === 0 ? '<span class="main">メイン</span>' : `<span class="main" style="background:#555;cursor:pointer" data-first="${i}">メインに</span>`}<button type="button" data-rm="${i}">×</button></div>`).join('')
+        + `<label class="upl">＋写真<input type="file" accept="image/*" multiple id="up"></label>`;
+      $$('[data-rm]').forEach(b => b.onclick = () => { imgs.splice(+b.dataset.rm, 1); drawImgs(); });
+      $$('[data-first]').forEach(b => b.onclick = () => { const [x] = imgs.splice(+b.dataset.first, 1); imgs.unshift(x); drawImgs(); });
+      $('#up').onchange = async e => {
+        for (const f of e.target.files) {
+          try { toast('アップロード中…'); const blob = await compress(f); const r = await api('/api/admin/images', { method: 'POST', body: blob, headers: { 'Content-Type': blob.type } }); imgs.push(r.url); drawImgs(); toast('追加しました'); }
+          catch (err) { toast(err.message); }
+        }
+      };
+    };
+    drawImgs();
     d.showModal();
     $('#cancel').onclick = () => d.close();
     $('#pf').onsubmit = async e => {
@@ -236,10 +398,12 @@
       const fd = new FormData(e.target);
       const body = Object.fromEntries(FIELDS.map(f => [f, fd.get(f)]));
       body.active = fd.get('active') ? 1 : 0;
+      body.real_photo = fd.get('real_photo') ? 1 : 0;
+      body.image_url = imgs[0] || '';
+      body.images = imgs.slice(1);
       try {
-        if (p) await api(`/api/admin/products/${p.id}`, { method: 'PUT', body: JSON.stringify(body) });
-        else await api('/api/admin/products', { method: 'POST', body: JSON.stringify(body) });
-        d.close(); toast('保存しました'); viewProducts();
+        const r = editing ? await api(`/api/admin/products/${p.id}`, { method: 'PUT', body: JSON.stringify(body) }) : await api('/api/admin/products', { method: 'POST', body: JSON.stringify(body) });
+        d.close(); toast(r.notified ? `保存しました（入荷通知を${r.notified}人に送信）` : '保存しました'); viewProducts();
       } catch (err) { toast(err.message); }
     };
     const del = $('#del');
@@ -256,27 +420,25 @@
     text = text.replace(/^﻿/, '');
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
-      if (q) {
-        if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
-        else cell += c;
-      } else if (c === '"') q = true;
-      else if (c === ',') { row.push(cell); cell = ''; }
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+      else if (c === '"') q = true;
+      else if (c === ',' || c === '\t') { row.push(cell); cell = ''; }
       else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
       else cell += c;
     }
     if (cell || row.length) { row.push(cell); rows.push(row); }
     return rows.filter(r => r.some(c => c.trim() !== ''));
   }
-  const HEAD_ALIAS = { '商品名': 'name', 'カード名': 'name', '弾': 'set_name', 'セット': 'set_name', '型番': 'card_no', 'レアリティ': 'rarity', '状態': 'condition', 'カテゴリ': 'category', '価格': 'price', '在庫': 'stock', '画像URL': 'image_url', '説明': 'description' };
-  const CAT_ALIAS = { 'シングル': 'single', 'PSA': 'psa', 'PSA鑑定品': 'psa', 'BOX': 'box', 'パック': 'box', 'BOX・パック': 'box', 'サプライ': 'supply' };
+  const HEAD_ALIAS = { '商品名': 'name', 'カード名': 'name', '弾': 'set_name', 'セット': 'set_name', '型番': 'card_no', 'レアリティ': 'rarity', '状態': 'condition', 'カテゴリ': 'category', '価格': 'price', '販売価格': 'price', '値下げ前価格': 'compare_price', '通常価格': 'compare_price', '買取価格': 'buy_price', '在庫': 'stock', '画像URL': 'image_url', '説明': 'description', '実物写真': 'real_photo' };
+  const CAT_ALIAS = { 'シングル': 'single', 'PSA': 'psa', 'PSA鑑定品': 'psa', '鑑定品': 'psa', 'BOX': 'box', 'パック': 'box', 'BOX・パック': 'box', 'サプライ': 'supply' };
 
   function viewImport() {
     shell(`
       <div class="panel form">
-        <p class="small">1行目に見出しを入れたCSVを貼り付けるか、ファイルを選んでください。使える見出し：<br>
-        <code>name(商品名), set_name(弾), card_no(型番), rarity(レアリティ), condition(状態), category(カテゴリ), price(価格), stock(在庫), image_url(画像URL), description(説明)</code><br>
-        カテゴリは single / psa / box / supply（日本語の「シングル」「PSA鑑定品」なども可）。</p>
-        <input type="file" id="file" accept=".csv,text/csv">
+        <p class="small">1行目に見出しを入れたCSV（Excel・スプレッドシートからのコピペでもOK）を貼り付けるか、ファイルを選んでください。使える見出し：<br>
+        <code>商品名, 弾, 型番, レアリティ, 状態, カテゴリ, 価格, 値下げ前価格, 買取価格, 在庫, 画像URL, 説明, 実物写真</code><br>
+        カテゴリは シングル / PSA鑑定品 / BOX / サプライ。英語の見出し（name, price …）も使えます。</p>
+        <input type="file" id="file" accept=".csv,.tsv,text/csv">
         <textarea id="csv" rows="8" placeholder="商品名,型番,レアリティ,状態,価格,在庫&#10;リザードンex,201/165,SAR,A,12800,1"></textarea>
         <button class="btn" id="preview">プレビュー</button>
         <div id="pv"></div>
@@ -289,12 +451,12 @@
       const items = rows.slice(1).map(r => {
         const o = {}; head.forEach((h, i) => { if (FIELDS.includes(h)) o[h] = (r[i] ?? '').trim(); });
         if (o.category) o.category = CAT_ALIAS[o.category] || o.category;
-        if (o.price) o.price = o.price.replace(/[¥,円\s]/g, '');
+        if (o.real_photo) o.real_photo = /^(1|true|○|はい|yes)$/i.test(o.real_photo) ? 1 : 0;
         return o;
       }).filter(o => o.name);
       $('#pv').innerHTML = `
         <p><b>${items.length}件</b>を登録します（先頭5件）</p>
-        <div class="overflow"><table><tr><th>商品名</th><th>型番</th><th>状態</th><th>価格</th><th>在庫</th></tr>
+        <div class="overflow"><table class="t"><tr><th>商品名</th><th>型番</th><th>状態</th><th>価格</th><th>在庫</th></tr>
         ${items.slice(0, 5).map(o => `<tr><td>${esc(o.name)}</td><td>${esc(o.card_no)}</td><td>${esc(o.condition)}</td><td>${esc(o.price)}</td><td>${esc(o.stock)}</td></tr>`).join('')}</table></div>
         <button class="btn primary" id="go" style="margin-top:10px">${items.length}件を登録する</button>`;
       $('#go').onclick = async () => {
@@ -305,12 +467,48 @@
     };
   }
 
+  // ─── クーポン ───
+  async function viewCoupons() {
+    shell('<p class="muted">読み込み中…</p>');
+    const list = await api('/api/admin/coupons');
+    $('#body').innerHTML = `
+      <form class="panel form" id="cf" style="margin-bottom:12px">
+        <b>クーポンを作成・更新</b>
+        <div class="grid3">
+          <label>コード<input name="code" required placeholder="WELCOME10" autocapitalize="characters"></label>
+          <label>種類<select name="type" style="width:100%"><option value="percent">％引き</option><option value="amount">円引き</option></select></label>
+          <label>値<input name="value" type="number" min="1" required placeholder="10"></label>
+          <label>最低購入金額<input name="min_subtotal" type="number" min="0" value="0"></label>
+          <label>利用回数の上限<input name="max_uses" type="number" min="0" value="0" title="0=無制限"></label>
+          <label>有効期限<input name="ends_at" type="datetime-local"></label>
+        </div>
+        <label>メモ<input name="note" placeholder="Xフォロワー向け など"></label>
+        <button class="btn primary">保存</button>
+      </form>
+      <div class="panel overflow"><table class="t">
+        <tr><th>コード</th><th>内容</th><th>条件</th><th class="num">利用</th><th>期限</th><th></th></tr>
+        ${list.map(c => `<tr class="${c.active ? '' : 'off'}"><td class="mono"><b>${esc(c.code)}</b><br><span class="muted small">${esc(c.note)}</span></td><td>${c.type === 'percent' ? c.value + '%OFF' : yen(c.value) + '引き'}</td>
+          <td class="small">${c.min_subtotal ? yen(c.min_subtotal) + '以上' : '-'}</td><td class="num">${c.used}${c.max_uses ? ' / ' + c.max_uses : ''}</td>
+          <td class="small">${c.ends_at ? jst(c.ends_at) : 'なし'}</td><td><button class="link" data-tg="${esc(c.code)}">${c.active ? '停止' : '再開'}</button> <button class="link danger" data-rm="${esc(c.code)}">削除</button></td></tr>`).join('') || '<tr><td class="muted">まだありません</td></tr>'}
+      </table></div>`;
+    $('#cf').onsubmit = async e => {
+      e.preventDefault();
+      const b = Object.fromEntries(new FormData(e.target));
+      if (b.ends_at) b.ends_at = new Date(b.ends_at).toISOString(); else delete b.ends_at;
+      try { await api('/api/admin/coupons', { method: 'POST', body: JSON.stringify(b) }); toast('保存しました'); viewCoupons(); } catch (err) { toast(err.message); }
+    };
+    $$('[data-rm]').forEach(b => b.onclick = async () => { if (!confirm('削除しますか？')) return; await api(`/api/admin/coupons/${b.dataset.rm}`, { method: 'DELETE' }); viewCoupons(); });
+    $$('[data-tg]').forEach(b => b.onclick = async () => { const c = list.find(x => x.code === b.dataset.tg); await api('/api/admin/coupons', { method: 'POST', body: JSON.stringify({ ...c, active: c.active ? 0 : 1, ends_at: c.ends_at ? new Date(c.ends_at.replace(' ', 'T') + 'Z').toISOString() : '' }) }); viewCoupons(); });
+  }
+
   async function render() {
     if (!key) { $('#logout').hidden = true; return viewLogin(); }
     $('#logout').hidden = false;
     try {
-      if (tab === 'orders') await viewOrders();
+      if (tab === 'dash') await viewDash();
+      else if (tab === 'orders') await viewOrders();
       else if (tab === 'products') await viewProducts();
+      else if (tab === 'coupons') await viewCoupons();
       else viewImport();
     } catch (e) { if (key) app.innerHTML = `<p class="danger pad center">${esc(e.message)}</p>`; }
   }
