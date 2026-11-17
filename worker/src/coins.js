@@ -3,7 +3,7 @@
 // ・有効期限を購入から6か月以内にしておけば、資金決済法の前払式支払手段の対象外
 // ・当選カードをコインに戻す機能は作らない（換金性の問題を避けるため。当選品は実物発送のみ）
 
-import { HttpError, json, int, str, readJson, rateLimit } from './util.js';
+import { HttpError, json, int, str, readJson, rateLimit, randomInt } from './util.js';
 import { cfg } from './config.js';
 import { getCustomer } from './members.js';
 import { drawForItems, undoDraws, prizeTiers, publicDraw } from './oripa.js';
@@ -112,8 +112,19 @@ export async function coinRoutes(req, env, path) {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
     if (!o || o.status !== 'live' || (o.starts_at && o.starts_at > now) || (o.ends_at && o.ends_at <= now)) throw new HttpError(409, 'このオリパは販売期間外です');
     // ボード形式：選んだパックの番号（重複なし・1〜総口数・まだ開けられていないもの）
-    const slots = o.pick_mode ? [...new Set((Array.isArray(b.slots) ? b.slots : []).map(n => int(n)))].filter(n => n >= 1 && n <= o.total) : null;
-    if (o.pick_mode && (!slots.length || slots.length !== (Array.isArray(b.slots) ? b.slots.length : 0))) throw new HttpError(400, '開けるパックを選んでください');
+    // 番号を指定しない場合（ランダムで引く）は、まだ開いていないパックからサーバーが選ぶ
+    const wantRandom = o.pick_mode && !(Array.isArray(b.slots) && b.slots.length);
+    let slots = o.pick_mode && !wantRandom ? [...new Set(b.slots.map(n => int(n)))].filter(n => n >= 1 && n <= o.total) : null;
+    if (o.pick_mode && !wantRandom && slots.length !== b.slots.length) throw new HttpError(400, '開けるパックを選び直してください');
+    if (wantRandom) {
+      const n = int(b.qty);
+      const { results: used } = await env.DB.prepare('SELECT slot FROM oripa_draws WHERE oripa_id = ? AND slot IS NOT NULL').bind(o.id).all();
+      const taken = new Set(used.map(r => r.slot));
+      const free = []; for (let s = 1; s <= o.total; s++) if (!taken.has(s)) free.push(s);
+      slots = [];
+      while (slots.length < n && free.length) slots.push(free.splice(randomInt(free.length), 1)[0]);
+      if (n > 0 && slots.length < n) throw new HttpError(409, `残りのパックは${slots.length}個です`);
+    }
     const qty = o.pick_mode ? slots.length : int(b.qty);
     const limit = Math.min(o.max_per_order || 9999, c.oripa.maxPerOrder);
     if (qty < 1 || qty > limit) throw new HttpError(400, `1回に${o.pick_mode ? '開けられる' : '引ける'}のは${limit}口までです`);

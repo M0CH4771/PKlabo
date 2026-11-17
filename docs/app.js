@@ -472,7 +472,7 @@
       </div>
       ${pick ? `<div class="box boardbox" id="boardbox">
         <div class="row-between"><h3 style="margin:0">パックを選ぶ</h3><span class="small muted" id="bstat"></span></div>
-        <p class="small muted" style="margin:4px 0 10px">${o.open ? 'タップして選び、「開封する」で開けます。開けられたパックには中身が表示されます。どのパックを選んでも当たる確率は同じです。' : '開封済みのパックの中身です。'}</p>
+        <p class="small muted" style="margin:4px 0 10px">${o.open ? 'タップして選び、「開封する」で開けます。開けられたパックには中身が表示されます。' : '開封済みのパックの中身です。'}</p>
         <div class="board" id="board"></div></div>
         ${o.open && me ? `<div class="pickbar" id="pickbar" hidden><span><b id="pbn">0</b>個　<b id="pbc">0</b>${esc(config.coin.name)}</span><button class="btn" id="pbclear">選び直す</button><button class="btn primary" id="pbopen">開封する</button></div>` : ''}` : ''}
       <div class="box">
@@ -521,8 +521,8 @@
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
         <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
-        <p class="small" style="margin:0">下のボードからパックを選んでください（1回に${lim}個まで）。</p>
-        ${n.length ? `<div class="row-between"><span class="small">おまかせで選ぶ</span><span class="drawbtns" style="flex:1;max-width:260px">${n.map(k => `<button type="button" class="btn sm" data-auto="${k}">${k}個</button>`).join('')}</span></div>` : ''}
+        <p class="small" style="margin:0">下のボードからパックを選んで開けられます（1回に${lim}個まで）。</p>
+        ${n.length ? `<div><span class="small">選ばずにランダムで引く</span><div class="drawbtns" style="margin-top:4px">${n.map(k => `<button type="button" class="btn ${k === 1 ? '' : 'primary'}" data-rnd="${k}" ${coinBal < k * o.price ? 'disabled' : ''}><b>${k}回引く</b><span class="small">${(k * o.price).toLocaleString()}${cn}</span></button>`).join('')}</div></div>` : ''}
         ${coinBal < o.price ? `<p class="small danger" style="margin:0">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
       </div>`;
     }
@@ -560,22 +560,16 @@
     }
     if (pick) {
       paintBoard(o.board);
-      $$('[data-auto]').forEach(b => b.onclick = () => {
-        picked.clear();
-        const pool = [...$$('#board [data-slot]')].map(x => +x.dataset.slot);
-        for (let i = 0; i < +b.dataset.auto && pool.length; i++) { const u = new Uint32Array(1); crypto.getRandomValues(u); picked.add(pool.splice(u[0] % pool.length, 1)[0]); }
-        $$('#board [data-slot]').forEach(x => { const on = picked.has(+x.dataset.slot); x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
-        syncBar();
-        $('#boardbox').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
+      $$('[data-rnd]').forEach(b => b.onclick = () => openPacks({ qty: +b.dataset.rnd }, b));
       const clr = $('#pbclear'); if (clr) clr.onclick = () => { picked.clear(); paintBoard(o.board); };
       const op = $('#pbopen');
-      if (op) op.onclick = async () => {
+      if (op) op.onclick = () => openPacks({ slots: [...picked].sort((a, b) => a - b) }, op);
+      async function openPacks(body, btn) {
         const agree = $('#oagree');
         if (agree && !agree.checked) { toast('注意事項への同意にチェックしてください'); agree.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-        op.disabled = true;
+        btn.disabled = true;
         try {
-          const r = await api(`/api/oripas/${o.id}/draw`, { method: 'POST', body: JSON.stringify({ slots: [...picked].sort((a, b) => a - b), agree: true }) });
+          const r = await api(`/api/oripas/${o.id}/draw`, { method: 'POST', body: JSON.stringify({ ...body, agree: true }) });
           picked.clear();
           showDrawResult(r, o, id);
           viewOripa(id);
@@ -583,9 +577,9 @@
           toast(e.message);
           if (e.status === 403 && /電話番号/.test(e.message)) { location.hash = '#/account'; return; }
           if (e.status === 409) { try { o.board = (await api(`/api/oripas/${o.id}?_=${Date.now()}`)).board; paintBoard(o.board); } catch { /* 次の更新で直る */ } }
-          op.disabled = false;
+          btn.disabled = false;
         }
-      };
+      }
       // ほかのお客様が開けたパックを数十秒ごとに反映
       const here = location.hash;
       const tick = setInterval(async () => {
