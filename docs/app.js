@@ -112,6 +112,7 @@
   }
   async function loadOripas(force) {
     if (!F_ON.oripa) { oripas = []; return; }
+    if (F_ON.coins && Object.keys(cart.oripa).length) { cart.oripa = {}; cart.save(); }
     if (!oripas || force) oripas = await api('/api/oripas' + (force ? '?_=' + Date.now() : '')).catch(() => []);
     for (const id of Object.keys(cart.oripa)) { const o = oripas.find(x => x.id === +id); if (!o || !o.open) delete cart.oripa[id]; }
     cart.save();
@@ -201,7 +202,7 @@
           <b class="oname">${esc(o.title)}</b>
           ${top ? `<span class="muted small">最高賞：${esc(top.rank)} ${esc(top.name)}</span>` : ''}
           <div class="obar"><i style="width:${pct}%"></i></div>
-          <div class="row-between small"><span>残り <b>${o.remaining}</b> / ${o.total}口</span><span class="price">${yen(o.price)}<small>/口</small></span></div>
+          <div class="row-between small"><span>残り <b>${o.remaining}</b> / ${o.total}口</span><span class="price">${F_ON.coins ? `${o.price.toLocaleString()}<small>${esc(config.coin.name)}/口</small>` : `${yen(o.price)}<small>/口</small>`}</span></div>
         </div>
       </a>`;
   }
@@ -438,6 +439,9 @@
     const needPhone = config.phoneEnabled && config.phone.forOripa;
     const inCart = cart.oripa[o.id] || 0;
     const limit = Math.max(0, Math.min(o.max_per_order, config.oripa.maxPerOrder, o.remaining) - inCart);
+    const limitC = Math.max(0, Math.min(o.max_per_order, config.oripa.maxPerOrder, o.remaining));
+    if (F_ON.coins && token && !me) await refreshMe();
+    const coinBal = F_ON.coins && me ? (await api('/api/me/coins').catch(() => ({ coins: 0 }))).coins : 0;
     app.innerHTML = `
       <a href="#/oripa" class="back">← オリパ一覧へ</a>
       <div class="detail">
@@ -446,16 +450,16 @@
         </div>
         <div class="dinfo">
           <h1>${esc(o.title)}</h1>
-          <div class="dprice"><span class="price big">${yen(o.price)}</span><small class="muted">／1口（税込）</small></div>
+          <div class="dprice">${F_ON.coins ? `<span class="price big">${o.price.toLocaleString()}</span><small class="muted">${esc(config.coin.name)}／1口</small>` : `<span class="price big">${yen(o.price)}</span><small class="muted">／1口（税込）</small>`}</div>
           <div class="obar big"><i style="width:${o.total ? Math.round(o.remaining / o.total * 100) : 0}%"></i></div>
           <p class="row-between"><span>残り <b class="big-num">${o.remaining}</b> / ${o.total}口</span>${o.ends_at ? `<span class="muted small">${jst(o.ends_at)}まで</span>` : ''}</p>
-          ${o.open ? `
+          ${!o.open ? '<p class="danger"><b>このオリパは完売・終了しました</b></p>' : F_ON.coins ? coinPanel(o, limitC) : `
             <div class="qty-row">
               <select id="oqty">${[1, 3, 5, 10, 20, 50].filter(n => n <= limit).concat(limit && ![1, 3, 5, 10, 20, 50].includes(limit) ? [limit] : []).map(n => `<option value="${n}">${n}口 ${yen(n * o.price)}</option>`).join('')}</select>
               <button class="btn primary" id="oadd" ${limit ? '' : 'disabled'}>カートに入れる</button>
             </div>
-            ${inCart ? `<p class="small">カートに${inCart}口入っています。<a href="#/cart">カートを見る</a></p>` : ''}` : '<p class="danger"><b>このオリパは完売・終了しました</b></p>'}
-          <div class="oripa-note small">${esc(config.oripa.notice)}<br>${esc(config.oripa.ageNotice)}${config.oripa.requireLogin ? `<br>ご購入には会員登録（ログイン）${needPhone ? 'と電話番号認証' : ''}が必要です。` : ''}<br>抽選は注文時にサーバーで行い、ご入金確認後に開封できます。</div>
+            ${inCart ? `<p class="small">カートに${inCart}口入っています。<a href="#/cart">カートを見る</a></p>` : ''}`}
+          <div class="oripa-note small">${esc(config.oripa.notice)}<br>${esc(config.oripa.ageNotice)}${config.oripa.requireLogin ? `<br>ご購入には会員登録（ログイン）${needPhone ? 'と電話番号認証' : ''}が必要です。` : ''}<br>${F_ON.coins ? `${esc(config.coin.name)}で引くとその場で結果が出ます。当選したカードはマイページの「獲得カード」から発送を依頼できます。` : '抽選は注文時にサーバーで行い、ご入金確認後に開封できます。'}</div>
           ${o.description ? `<div class="desc">${esc(o.description).replace(/\n/g, '<br>')}</div>` : ''}
         </div>
       </div>
@@ -482,6 +486,135 @@
       ${o.recent.length ? `<div class="box"><h3>最近の当選</h3><div class="recent">${o.recent.map(r => `<div class="small"><span class="tag rank ${r.is_last_one ? 'lo' : ''}">${esc(r.is_last_one ? 'ラストワン' : r.rank)}</span> ${esc(r.name)} <span class="muted">${jst(r.revealed_at)}</span></div>`).join('')}</div></div>` : ''}`;
     const add = $('#oadd');
     if (add) add.onclick = () => { const n = +$('#oqty').value; cart.setOripa(o.id, inCart + n); toast(`${n}口をカートに入れました`); viewOripa(id); };
+    $$('[data-draw]').forEach(b => b.onclick = async () => {
+      const agree = $('#oagree');
+      if (agree && !agree.checked) { toast('注意事項への同意にチェックしてください'); agree.focus(); return; }
+      const n = +b.dataset.draw;
+      $$('[data-draw]').forEach(x => x.disabled = true);
+      try {
+        const r = await api(`/api/oripas/${o.id}/draw`, { method: 'POST', body: JSON.stringify({ qty: n, agree: true }) });
+        showDrawResult(r, o, id);
+      } catch (e) {
+        toast(e.message);
+        if (e.status === 403 && /電話番号/.test(e.message)) location.hash = '#/account';
+        $$('[data-draw]').forEach(x => x.disabled = false);
+      }
+    });
+
+    function coinPanel(o, lim) {
+      const cn = esc(config.coin.name);
+      if (!me) return `<div class="coinpanel"><p class="small">${cn}を購入して引くと、その場で結果が出ます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして引く</a></div>`;
+      const opts = [1, 3, 10].filter(n => n <= lim);
+      if (!opts.length && lim) opts.push(lim);
+      return `<div class="coinpanel">
+        <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
+        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
+        <div class="drawbtns">${opts.map(n => `<button class="btn ${n === 1 ? '' : 'primary'}" data-draw="${n}" ${coinBal < n * o.price ? 'disabled' : ''}><b>${n}回引く</b><span class="small">${(n * o.price).toLocaleString()}${cn}</span></button>`).join('')}</div>
+        ${coinBal < o.price ? `<p class="small danger">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
+      </div>`;
+    }
+    const ag = $('#oagree'); if (ag) ag.onchange = () => store.set('pk_oripa_agree', ag.checked);
+  }
+
+  // 抽選結果（その場で開封）
+  function showDrawResult(r, o, id) {
+    const d = document.createElement('dialog');
+    d.className = 'sheet result';
+    d.innerHTML = `<div class="sheet-h"><b>🎁 ${esc(o.title)}</b><span class="small">残り ${r.coins.toLocaleString()}${esc(config.coin.name)}</span></div>
+      <div class="sheet-b"><div class="draws opening">${r.draws.map((x, i) => drawCard(x, i)).join('')}</div>
+      <p class="small muted">当選したカードはマイページの「獲得カード」に入りました。まとめて発送を依頼できます。</p></div>
+      <div class="sheet-f"><a class="btn" href="#/box" id="tobox">獲得カードを見る</a><button class="btn primary" id="again">続けて引く</button></div>`;
+    document.body.appendChild(d);
+    d.showModal();
+    requestAnimationFrame(() => setTimeout(() => $$('.dcard', d).forEach(c => c.classList.add('flip')), 80));
+    const close = () => { d.close(); d.remove(); };
+    $('#tobox', d).onclick = close;
+    $('#again', d).onclick = () => { close(); viewOripa(id); };
+    d.addEventListener('cancel', () => { d.remove(); viewOripa(id); });
+  }
+
+  // ─── コイン購入 ───
+  async function viewCoins() {
+    if (!F_ON.coins) { location.hash = '#/'; return; }
+    if (!token) { location.hash = '#/account?next=coins'; return; }
+    const s = await api('/api/me/coins');
+    const cn = esc(config.coin.name);
+    app.innerHTML = `
+      <h1 class="h">${cn}を購入</h1>
+      <div class="pointcard coin"><span class="small">保有${cn}</span><b>${s.coins.toLocaleString()}</b>
+        <span class="small">${s.next_expire ? `うち ${s.next_expire.amount.toLocaleString()} は ${jst(s.next_expire.expires_at, { year: 'numeric', month: 'numeric', day: 'numeric' })} に失効` : 'オリパを引くのに使えます'}</span></div>
+      <form id="cf2" class="form">
+        <fieldset><legend>購入する金額</legend>
+          <div class="packs">${config.coin.packs.map((p, i) => `<label class="pack"><input type="radio" name="pack" value="${i}" ${i === 0 ? 'checked' : ''}><span><b>${p.coins.toLocaleString()}${cn}</b>${p.coins > p.price ? `<em>+${(p.coins - p.price).toLocaleString()}お得</em>` : ''}<span class="small">${yen(p.price)}</span></span></label>`).join('')}</div>
+        </fieldset>
+        <fieldset><legend>お支払い方法</legend>
+          ${config.cardEnabled ? '<label class="radio"><input type="radio" name="pay" value="card" checked> クレジットカード<span class="muted small">決済が終わるとすぐに付与されます</span></label>' : ''}
+          ${config.bankEnabled ? `<label class="radio"><input type="radio" name="pay" value="bank" ${config.cardEnabled ? '' : 'checked'}> 銀行振込<span class="muted small">ご入金を確認してから付与します</span></label>` : ''}
+        </fieldset>
+        <div class="oripa-note small">
+          ・${cn}は当店のオリパにのみ使えます（1${cn}＝1円相当）。<br>
+          ・${config.coin.expireMonths ? `有効期限は付与から${config.coin.expireMonths}か月です。期限を過ぎた${cn}は失効します。` : '有効期限はありません。'}<br>
+          ・購入した${cn}の払い戻し・換金はできません。当選したカードを${cn}に戻すこともできません。<br>
+          ・<a href="legal.html#coin" target="_blank">${cn}に関する表示</a>
+        </div>
+        <button class="btn primary block">購入する</button>
+      </form>
+      ${s.ledger.length ? `<details class="box"><summary><b>${cn}の履歴</b></summary><table class="sib">${s.ledger.map(l => `<tr><td class="small">${jst(l.created_at)}</td><td class="small">${esc(l.reason)}</td><td class="${l.delta > 0 ? 'ok' : 'danger'}">${l.delta > 0 ? '+' : ''}${l.delta.toLocaleString()}</td></tr>`).join('')}</table></details>` : ''}`;
+    $('#cf2').onsubmit = async e => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target));
+      const btn = $('#cf2 button.primary'); btn.disabled = true;
+      try {
+        const r = await api('/api/coins/buy', { method: 'POST', body: JSON.stringify({ pack: +fd.pack, payment_method: fd.pay || 'bank' }) });
+        const hist = store.get('pk_orders', []); hist.unshift({ no: r.order_no, t: r.token, at: Date.now(), total: r.total }); store.set('pk_orders', hist.slice(0, 30));
+        if (r.checkout_url) location.href = r.checkout_url; else location.hash = `#/order/${r.order_no}?t=${r.token}&new=1`;
+      } catch (err) { toast(err.message); btn.disabled = false; }
+    };
+  }
+
+  // ─── 獲得カードBOX ───
+  async function viewBox() {
+    if (!token) { location.hash = '#/account'; return; }
+    await refreshMe();
+    if (!me) { location.hash = '#/account'; return; }
+    const list = await api('/api/me/prizes');
+    const c = me.customer;
+    app.innerHTML = `
+      <h1 class="h">獲得カード <span class="muted small">${list.length}枚</span></h1>
+      ${list.length ? `
+        <div class="toolbar2"><label class="check"><input type="checkbox" id="all" checked> すべて選択</label></div>
+        <div class="boxgrid">${list.map(d => `<label class="bx"><input type="checkbox" class="sel" value="${d.id}" checked>
+          ${d.image_url ? `<img src="${esc(d.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
+          <span class="tag rank ${d.is_last_one ? 'lo' : ''}">${esc(d.is_last_one ? 'ラストワン' : d.rank)}</span><b>${esc(d.name)}</b><span class="muted small">${esc(d.title)}</span></label>`).join('')}</div>
+        <form id="sf2" class="form" style="margin-top:12px">
+          <fieldset><legend>発送を依頼する</legend>
+            ${config.pickupEnabled ? `<label class="radio"><input type="radio" name="ship" value="delivery" checked> 配送</label><label class="radio"><input type="radio" name="ship" value="pickup"> 店頭で受け取る<span class="muted small">${esc(config.pickupInfo)}</span></label>` : ''}
+            <label>お名前<input name="name" value="${esc(c.name)}" required></label>
+            <label>電話番号<input name="phone" type="tel" value="${esc(c.phone)}" required></label>
+            <div id="addr2" class="sub"><label>郵便番号<input name="zip" inputmode="numeric" value="${esc(c.zip)}"></label>
+            <label>住所<textarea name="address" rows="2">${esc(c.address)}</textarea></label>
+            <label class="check"><input type="checkbox" name="save_address" checked> この住所を会員情報に保存する</label></div>
+            <label>備考<textarea name="note" rows="2"></textarea></label>
+            <p class="small">発送料：${config.coin.shipFee ? `${config.coin.shipFee.toLocaleString()}${esc(config.coin.name)}` : '無料'}</p>
+            <button class="btn primary block" id="shipbtn">選んだカードの発送を依頼</button>
+          </fieldset>
+        </form>` : `<p class="muted pad center">まだ獲得カードはありません。<br><a class="btn" href="#/oripa">オリパを見る</a></p>`}`;
+    if (!list.length) return;
+    const all = $('#all'); all.onchange = () => $$('.sel').forEach(x => x.checked = all.checked);
+    const sf = $('#sf2');
+    $$('[name=ship]', sf).forEach(r => r.onchange = () => { $('#addr2').hidden = sf.ship.value === 'pickup'; });
+    sf.onsubmit = async e => {
+      e.preventDefault();
+      const ids = $$('.sel').filter(x => x.checked).map(x => +x.value);
+      if (!ids.length) { toast('発送するカードを選んでください'); return; }
+      const fd = Object.fromEntries(new FormData(sf));
+      $('#shipbtn').disabled = true;
+      try {
+        const r = await api('/api/me/prizes/ship', { method: 'POST', body: JSON.stringify({ ids, shipping_method: fd.ship || 'delivery', save_address: !!fd.save_address, customer: { name: fd.name, phone: fd.phone, zip: fd.zip, address: fd.address, note: fd.note } }) });
+        toast('発送依頼を受け付けました');
+        location.hash = `#/order/${r.order_no}?t=${r.token}`;
+      } catch (err) { toast(err.message); $('#shipbtn').disabled = false; }
+    };
   }
 
   // ─── カート ───
@@ -705,21 +838,24 @@
     const digits = o.order_no.replace('PK', '');
     const pickup = o.shipping_method === 'pickup';
     const payLabel = { card: '決済完了', points: 'ポイント払い完了', bank: '入金確認' }[o.payment_method];
-    const steps = [['ご注文', true], [payLabel, ['paid', 'shipped'].includes(o.status)], [pickup ? '受取準備完了' : '発送済み', o.status === 'shipped']];
+    const steps = o.kind === 'coin' ? [['ご注文', true], [`${config.coin.name}付与`, o.status === 'shipped']]
+      : o.kind === 'ship' ? [['発送依頼', true], [pickup ? '受取準備完了' : '発送済み', o.status === 'shipped']]
+      : [['ご注文', true], [payLabel, ['paid', 'shipped'].includes(o.status)], [pickup ? '受取準備完了' : '発送済み', o.status === 'shipped']];
     const unrevealed = o.can_open && o.draws.some(d => !d.revealed_at);
     const byOripa = {};
     o.draws.forEach(d => (byOripa[d.title] ||= []).push(d));
     app.innerHTML = `
-      ${isNew ? '<div class="thanks"><h1>ご注文ありがとうございます</h1><p>このページをブックマークしておくと、あとでご注文状況を確認できます。</p></div>' : '<h1 class="h">ご注文状況</h1>'}
+      ${o.kind === 'coin' && o.status === 'shipped' ? `<div class="thanks"><h1>${esc(config.coin.name)} ${o.coins.toLocaleString()} を付与しました</h1><p><a class="btn primary" href="#/oripa">オリパを引く</a></p></div>` : ''}
+      ${isNew && o.kind !== 'ship' ? '<div class="thanks"><h1>ご注文ありがとうございます</h1><p>このページをブックマークしておくと、あとでご注文状況を確認できます。</p></div>' : '<h1 class="h">ご注文状況</h1>'}
       ${['cancelled', 'expired'].includes(o.status) ? `<div class="ordercard"><b class="danger">このご注文は${esc(o.status_label)}になりました。</b></div>` : `
       <ol class="steps">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps[i - 1]?.[1]) ? 'cur' : ''}">${l}</li>`).join('')}</ol>`}
       ${o.draws.length ? `
         <div class="box oripa-open">
-          <h3>🎁 オリパ（${o.draws.filter(d => !d.is_last_one).length}口${o.draws.some(d => d.is_last_one) ? '＋ラストワン賞' : ''}）</h3>
+          <h3>${o.kind === 'ship' ? `🎁 ${pickup ? 'お受け取り' : '発送'}する当選カード（${o.draws.length}枚）` : `🎁 オリパ（${o.draws.filter(d => !d.is_last_one).length}口${o.draws.some(d => d.is_last_one) ? '＋ラストワン賞' : ''}）`}</h3>
           ${!o.can_open ? `<p class="small">${['cancelled', 'expired'].includes(o.status) ? 'キャンセルされたため開封できません。' : 'ご入金確認後に開封できます。お支払いが済むとこのページに「開封する」ボタンが表示されます。'}</p>` :
             unrevealed ? `<button class="btn primary block" id="reveal">開封する</button>` :
             `<div class="draws">${Object.entries(byOripa).map(([t, ds]) => `<p class="small muted">${esc(t)}</p>${ds.map((d, i) => drawCard(d, i)).join('')}`).join('')}</div>
-             <p class="small muted">当選したカードは${pickup ? '店頭でお渡し' : '他の商品と一緒に発送'}します。</p>`}
+             <p class="small muted">${o.kind === 'ship' ? (o.status === 'shipped' ? (pickup ? '準備ができています。' : '発送しました。') : '準備ができ次第、発送のご連絡をします。') : `当選したカードは${pickup ? '店頭でお渡し' : '他の商品と一緒に発送'}します。`}</p>`}
         </div>` : ''}
       <div class="ordercard">
         <div class="row-between"><span>注文番号</span><strong class="mono">${esc(o.order_no)}</strong></div>
@@ -737,11 +873,11 @@
           <p class="small">お支払い期限：<strong>${jst(o.expires_at)}</strong> まで<br><span class="muted">期限を過ぎると自動でキャンセルになります。振込手数料はお客様のご負担となります。</span></p>
         </div>` : ''}
       ${pickup && o.pickup_info ? `<div class="box"><h3>店頭受け取り</h3><p class="small">${esc(o.pickup_info)}</p><p class="small muted">${o.status === 'shipped' ? '準備ができています。ご来店をお待ちしております。' : '準備ができ次第メールでお知らせします。'}注文番号をお伝えください。</p></div>` : ''}
-      <div class="summary">
+      ${o.kind === 'ship' ? (o.coins ? `<p class="small muted">発送料：${o.coins.toLocaleString()}${esc(config.coin.name)}（お支払い済み）</p>` : '') : `<div class="summary">
         ${summaryHtml({ subtotal: o.subtotal, discount: o.discount, coupon: { code: o.coupon_code }, points_use: o.points_used, shipping: o.shipping_fee, total: o.total }, {
           pickup, lines: o.items.map(i => `<div class="small"><span>${i.oripa_id ? `オリパ「${esc(i.name)}」× ${i.qty}口` : `${esc(i.name)} ${esc(i.condition)} × ${i.qty}`}</span><span>${yen(i.price * i.qty)}</span></div>`).join('') })}
-      </div>
-      ${pickup ? '' : `<p class="small muted">お届け先：〒${esc(o.zip)} ${esc(o.address)} ${esc(o.name)} 様</p>`}
+      </div>`}
+      ${pickup || o.kind === 'coin' ? '' : `<p class="small muted">お届け先：〒${esc(o.zip)} ${esc(o.address)} ${esc(o.name)} 様</p>`}
       <a class="btn" href="#/">ショップトップへ</a>`;
     $$('[data-copy]').forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('コピーしました'); } catch { toast(b.dataset.copy); } });
     const rv = $('#reveal');
@@ -799,7 +935,7 @@
           const r = await api(mode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: JSON.stringify(fd) });
           setToken(r.token); await refreshMe();
           toast(mode === 'login' ? 'ログインしました' : r.verify_sent ? '登録しました。確認メールのリンクを開いてください' : r.phone_required ? '登録しました。マイページで電話番号を認証してください' : `登録しました${F_ON.points && config.points.signupBonus ? `（${config.points.signupBonus}pt プレゼント）` : ''}`);
-          location.hash = next === 'checkout' ? '#/checkout' : '#/account';
+          location.hash = next ? `#/${next}` : '#/account';
         } catch (err) { const a = $('#aerr'); a.textContent = err.message; a.hidden = false; }
       };
       return;
@@ -817,6 +953,7 @@
           <div class="row pts" id="phcode" hidden><input id="phc" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="届いた6桁のコード"><button class="btn sm primary" id="phok">認証する</button></div>
           <p class="small danger" id="pherr" hidden></p>
         </div>`) : ''}
+      ${F_ON.coins ? `<div class="mylinks"><a class="btn" href="#/coins">${esc(config.coin.name)}の購入・残高</a><a class="btn" href="#/box">獲得カード（発送依頼）</a></div>` : ''}
       ${F_ON.points ? `
       <div class="pointcard">
         <span class="small">保有ポイント</span><b>${c.points.toLocaleString()}<small>pt</small></b>
@@ -1016,6 +1153,8 @@
       const mor = path.match(/^\/oripa\/(\d+)$/);
       if (mor) return viewOripa(+mor[1]);
       if (path === '/oripa') return viewOripaList();
+      if (path === '/coins') return viewCoins();
+      if (path === '/box') return viewBox();
       if (path === '/cart') return viewCart();
       if (path === '/checkout') return viewCheckout();
       if (path === '/fav') return viewFav();

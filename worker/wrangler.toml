@@ -30,7 +30,7 @@ MAX_QTY_PER_ITEM = "10"
 SHIP_CUTOFF_HOUR = "13"
 SHIP_DAYS = "1,2,3,4,5,6"
 # 店頭受け取り（送料無料）
-PICKUP_ENABLED = "true"
+PICKUP_ENABLED = "false"
 PICKUP_INFO = "ポケカ買取ラボ店頭にてお渡しします。営業時間内にご来店ください。（住所・営業時間をここに記入）"
 # 商品ページの「このカードを売る」から飛ぶ買取フォーム
 BUYBACK_URL = "https://mocha0908.github.io/PKlab/"

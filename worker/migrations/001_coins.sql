@@ -1,0 +1,23 @@
+-- コイン機能を追加する前に schema.sql を実行済みのデータベース用（新しく作る場合は不要）
+--   npx wrangler d1 execute pklabo-db --remote --file=./migrations/001_coins.sql
+ALTER TABLE orders ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal';
+ALTER TABLE orders ADD COLUMN coins INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE customers ADD COLUMN coins INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE oripa_draws_new (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  oripa_id     INTEGER NOT NULL,
+  order_id     INTEGER,
+  customer_id  INTEGER,
+  prize_id     INTEGER NOT NULL,
+  is_last_one  INTEGER NOT NULL DEFAULT 0,
+  revealed_at  TEXT,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO oripa_draws_new (id, oripa_id, order_id, prize_id, is_last_one, revealed_at, created_at)
+  SELECT id, oripa_id, order_id, prize_id, is_last_one, revealed_at, created_at FROM oripa_draws;
+DROP TABLE oripa_draws;
+ALTER TABLE oripa_draws_new RENAME TO oripa_draws;
+CREATE INDEX IF NOT EXISTS idx_draws_order ON oripa_draws(order_id);
+CREATE INDEX IF NOT EXISTS idx_draws_customer ON oripa_draws(customer_id, order_id);
+CREATE INDEX IF NOT EXISTS idx_draws_oripa ON oripa_draws(oripa_id, revealed_at);

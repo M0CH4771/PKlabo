@@ -8,6 +8,7 @@ import {
 import { loadConfig, cfg, publicConfig, saveSettings } from './config.js';
 import { getCustomer, memberRoutes, adminMemberRoutes, usePoints, addPoints, grantOrderPoints, reverseOrderPoints, expirePoints } from './members.js';
 import { oripaPublicRoutes, adminOripaRoutes, priceOripaItems, drawForItems, undoDraws, releaseOrderDraws, orderDraws, revealOrder } from './oripa.js';
+import { coinRoutes, adminCoinRoutes, addCoins, spendCoins, refundCoins, revokeCoins, expireCoins } from './coins.js';
 
 const STATUSES = ['awaiting_payment', 'paid', 'shipped', 'cancelled', 'expired'];
 const STATUS_LABEL = { awaiting_payment: '入金待ち', paid: '入金確認済み', shipped: '発送済み', cancelled: 'キャンセル', expired: '期限切れ' };
@@ -116,12 +117,25 @@ async function restoreStock(env, items) {
   ));
 }
 
-// 注文を取り消して在庫・抽選・クーポン・ポイントを戻す（fromStatuses のときだけ）
+// 注文を取り消して在庫・抽選・クーポン・ポイント・コインを戻す（fromStatuses のときだけ）
 async function releaseOrder(env, orderId, newStatus, fromStatuses) {
+  const before = await env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(orderId).first();
+  if (!before) return false;
   const placeholders = fromStatuses.map((_, i) => `?${i + 3}`).join(',');
   const upd = await env.DB.prepare(`UPDATE orders SET status = ?1 WHERE id = ?2 AND status IN (${placeholders})`).bind(newStatus, orderId, ...fromStatuses).run();
   if (upd.meta.changes !== 1) return false;
-  const order = await env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(orderId).first();
+  const order = before;
+  if (order.kind === 'coin') {
+    // 付与済みのコインを取り消す
+    if (['paid', 'shipped'].includes(before.status) && order.customer_id) await revokeCoins(env, order.customer_id, order.coins, `コイン購入の取消（${order.order_no}）`, order.id);
+    return true;
+  }
+  if (order.kind === 'ship') {
+    // 当選品の発送依頼のキャンセル：当選品は会員の獲得カードBOXに戻す（山には戻さない）
+    await env.DB.prepare('UPDATE oripa_draws SET order_id = NULL WHERE order_id = ?').bind(orderId).run();
+    if (order.coins > 0 && order.customer_id) await addCoins(env, order.customer_id, order.coins, `発送料の返却（${order.order_no}）`, { orderId: order.id });
+    return true;
+  }
   const { results } = await env.DB.prepare('SELECT product_id, qty FROM order_items WHERE order_id = ?').bind(orderId).all();
   await restoreStock(env, results);
   await releaseOrderDraws(env, orderId);
@@ -146,6 +160,12 @@ async function expireOverdueOrders(env, limit = 5) {
 }
 
 async function markPaid(env, order) {
+  if (order.kind === 'coin') {
+    // コイン購入：入金・決済の確認と同時にコインを付与して完了
+    const r = await env.DB.prepare(`UPDATE orders SET status = 'shipped', paid_at = datetime('now'), shipped_at = datetime('now') WHERE id = ? AND status = 'awaiting_payment'`).bind(order.id).run();
+    if (r.meta.changes === 1 && order.customer_id) await addCoins(env, order.customer_id, order.coins, `${cfg(env).coin.name}購入（${order.order_no}）`, { orderId: order.id });
+    return r.meta.changes === 1;
+  }
   const r = await env.DB.prepare(`UPDATE orders SET status = 'paid', paid_at = datetime('now') WHERE id = ? AND status = 'awaiting_payment'`).bind(order.id).run();
   if (r.meta.changes === 1 && cfg(env).points.grantOn === 'paid') await grantOrderPoints(env, order);
   return r.meta.changes === 1;
@@ -239,6 +259,7 @@ async function createOrder(req, env) {
     name: str(cu.name, 100), kana: str(cu.kana, 100), email: str(cu.email, 200) || customer?.email || '',
     phone: str(cu.phone, 30), zip: str(cu.zip, 10), address: str(cu.address, 300), note: str(cu.note, 1000),
   };
+  if (c.features.coins && (Array.isArray(body.items) ? body.items : []).some(i => int(i.oripa_id) > 0)) throw new HttpError(400, `オリパはオリパのページから${c.coin.name}でお引きください`);
   const q = await quote(env, body, customer);
   if (q.oripaItems.length) {
     if (c.oripa.requireLogin && !customer) throw new HttpError(401, 'オリパのご購入には会員登録（ログイン）が必要です');
@@ -334,6 +355,100 @@ async function createOrder(req, env) {
   return json(result, 201);
 }
 
+// コインを購入する（カード決済ならすぐ付与、振込なら入金確認後に付与）
+async function createCoinOrder(req, env) {
+  const c = cfg(env);
+  if (!c.features.coins) throw new HttpError(400, '現在ご利用いただけません');
+  const customer = await getCustomer(req, env);
+  if (!customer) throw new HttpError(401, 'ログインしてください');
+  await rateLimit(env, `order:${clientIp(req)}`, 15, 3600, '短時間にご注文が続いています。しばらくしてからお試しください');
+  const b = await readJson(req);
+  const pack = c.coin.packs[int(b.pack, -1)];
+  if (!pack) throw new HttpError(400, '購入する金額を選んでください');
+  const method = b.payment_method === 'card' ? 'card' : 'bank';
+  if (method === 'card' && !c.cardEnabled) throw new HttpError(400, 'カード決済は現在ご利用いただけません');
+  if (method === 'bank' && !c.bankEnabled) throw new HttpError(400, '銀行振込は現在ご利用いただけません');
+  if (method === 'bank') {
+    const pend = await env.DB.prepare(`SELECT COUNT(*) AS n FROM orders WHERE status = 'awaiting_payment' AND payment_method = 'bank' AND customer_id = ?`).bind(customer.id).first();
+    if (pend.n >= 3) throw new HttpError(429, 'お支払い待ちのご注文が3件あります。お支払いまたは期限切れの後にご注文ください');
+  }
+  const orderNo = await newOrderNo(env);
+  const token = crypto.randomUUID();
+  const label = `${c.coin.name} ${pack.coins.toLocaleString()}`;
+  const expiresAt = method === 'bank' ? addMinutesIso(c.paymentDays * 24 * 60) : addMinutesIso(35);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO orders (order_no, token, status, kind, coins, payment_method, shipping_method, customer_id, name, kana, email, phone, zip, address, note, subtotal, shipping_fee, total, expires_at)
+       VALUES (?, ?, 'awaiting_payment', 'coin', ?, ?, 'none', ?, ?, ?, ?, ?, '', '', '', ?, 0, ?, ?)`
+    ).bind(orderNo, token, pack.coins, method, customer.id, customer.name, customer.kana || '', customer.email, customer.phone || '-', pack.price, pack.price, expiresAt),
+    env.DB.prepare(`INSERT INTO order_items (order_id, product_id, oripa_id, name, card_no, condition, price, qty) VALUES ((SELECT id FROM orders WHERE order_no = ?), 0, 0, ?, '', '', ?, 1)`)
+      .bind(orderNo, label, pack.price),
+  ]);
+  const order = await env.DB.prepare('SELECT * FROM orders WHERE order_no = ?').bind(orderNo).first();
+  const items = [{ oripa_id: 0, product_id: 0, name: label, card_no: '', condition: '', price: pack.price, qty: 1 }];
+  const result = { order_no: orderNo, token, total: pack.price, payment_method: method };
+  if (method === 'card') {
+    try {
+      const session = await createStripeSession(env, order, items);
+      await env.DB.prepare('UPDATE orders SET stripe_session = ? WHERE id = ?').bind(session.id, order.id).run();
+      result.checkout_url = session.url;
+    } catch (e) {
+      console.error(e);
+      await releaseOrder(env, order.id, 'cancelled', ['awaiting_payment']);
+      throw new HttpError(502, 'カード決済ページの作成に失敗しました。時間をおいて再度お試しください');
+    }
+  } else {
+    await sendMail(env, order.email, `【${c.shopName}】${c.coin.name}のご購入ありがとうございます（${orderNo}）`, orderMailText(env, order, items, 'created'));
+  }
+  await notifyAdmin(env, `${c.coin.name}購入 ${orderNo}（${method === 'bank' ? '振込' : 'カード'}）${yen(pack.price)} / ${customer.name}`, '');
+  return json(result, 201);
+}
+
+// 獲得カードBOXの当選品を発送依頼する
+async function createShipRequest(req, env) {
+  const c = cfg(env);
+  const customer = await getCustomer(req, env);
+  if (!customer) throw new HttpError(401, 'ログインしてください');
+  await rateLimit(env, `ship:${customer.id}`, 20, 3600);
+  const b = await readJson(req);
+  const ids = [...new Set((Array.isArray(b.ids) ? b.ids : []).map(x => int(x)).filter(n => n > 0))].slice(0, 500);
+  if (!ids.length) throw new HttpError(400, '発送するカードを選んでください');
+  const { results: mine } = await env.DB.prepare(
+    `SELECT id FROM oripa_draws WHERE customer_id = ? AND order_id IS NULL AND id IN (${ids.map(() => '?').join(',')})`
+  ).bind(customer.id, ...ids).all();
+  if (mine.length !== ids.length) throw new HttpError(409, '発送できないカードが含まれています。画面を更新してください');
+  const pickup = b.shipping_method === 'pickup' && c.pickupEnabled;
+  const cu = b.customer || {};
+  const info = { name: str(cu.name, 100) || customer.name, phone: str(cu.phone, 30) || customer.phone, zip: str(cu.zip, 10), address: str(cu.address, 300), note: str(cu.note, 1000) };
+  if (!info.name || !info.phone) throw new HttpError(400, 'お名前と電話番号を入力してください');
+  if (!pickup && (!info.zip || !info.address)) throw new HttpError(400, '郵便番号と住所を入力してください');
+  const fee = c.coin.shipFee;
+  const used = fee > 0 ? await spendCoins(env, customer.id, fee, '当選品の発送料') : [];
+  const orderNo = await newOrderNo(env);
+  const token = crypto.randomUUID();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO orders (order_no, token, status, kind, coins, payment_method, shipping_method, customer_id, name, kana, email, phone, zip, address, note, subtotal, shipping_fee, total, paid_at)
+       VALUES (?, ?, 'paid', 'ship', ?, 'coin', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, datetime('now'))`
+    ).bind(orderNo, token, fee, pickup ? 'pickup' : 'delivery', customer.id, info.name, customer.kana || '', customer.email, info.phone, pickup ? '' : info.zip, pickup ? '' : info.address, info.note).run();
+  } catch (e) { await refundCoins(env, customer.id, used, '発送料の返却（エラー）'); throw e; }
+  const order = await env.DB.prepare('SELECT * FROM orders WHERE order_no = ?').bind(orderNo).first();
+  const u = await env.DB.prepare(
+    `UPDATE oripa_draws SET order_id = ? WHERE customer_id = ? AND order_id IS NULL AND id IN (${ids.map(() => '?').join(',')})`
+  ).bind(order.id, customer.id, ...ids).run();
+  if (u.meta.changes !== ids.length) {
+    await env.DB.prepare('UPDATE oripa_draws SET order_id = NULL WHERE order_id = ?').bind(order.id).run();
+    await env.DB.prepare(`UPDATE orders SET status = 'cancelled' WHERE id = ?`).bind(order.id).run();
+    await refundCoins(env, customer.id, used, '発送料の返却（エラー）');
+    throw new HttpError(409, '発送できないカードが含まれています。画面を更新してください');
+  }
+  if (b.save_address && !pickup) await env.DB.prepare('UPDATE customers SET phone = ?, zip = ?, address = ? WHERE id = ?').bind(info.phone, info.zip, info.address, customer.id).run();
+  await sendMail(env, order.email, `【${c.shopName}】当選品の発送依頼を受け付けました（${orderNo}）`,
+    `${order.name} 様\n\nオリパ当選品 ${ids.length}点の${pickup ? 'お受け取り' : '発送'}依頼を受け付けました。\n${pickup ? '準備ができ次第ご連絡します。' : '発送しましたら追跡番号をお知らせします。'}\n\nご依頼の確認: ${(env.SITE_URL || '').replace(/\/$/, '')}/#/order/${orderNo}?t=${token}\n\n${c.shopName}`);
+  await notifyAdmin(env, `当選品の発送依頼 ${orderNo} ${ids.length}点 / ${order.name}`, '');
+  return json({ order_no: orderNo, token }, 201);
+}
+
 async function findOrderByToken(env, orderNo, token) {
   const order = await env.DB.prepare('SELECT * FROM orders WHERE order_no = ?').bind(orderNo).first();
   if (!order || !token || !timingSafeEqual(token, order.token)) throw new HttpError(404, '注文が見つかりません');
@@ -346,7 +461,8 @@ async function getOrderPublic(env, order) {
   const carrier = CARRIERS[order.carrier];
   const canOpen = ['paid', 'shipped'].includes(order.status);
   const out = {
-    order_no: order.order_no, status: order.status, status_label: STATUS_LABEL[order.status],
+    order_no: order.order_no, status: order.status, status_label: order.kind === 'coin' && order.status === 'shipped' ? '付与済み' : order.kind === 'ship' && order.status === 'paid' ? '発送準備中' : STATUS_LABEL[order.status],
+    kind: order.kind, coins: order.coins,
     payment_method: order.payment_method, shipping_method: order.shipping_method,
     name: order.name, zip: order.zip, address: order.address,
     subtotal: order.subtotal, discount: order.discount, coupon_code: order.coupon_code,
@@ -449,6 +565,11 @@ function orderMailText(env, order, items, kind) {
   const hasOripa = items.some(it => it.oripa_id);
   const url = `${site}/#/order/${order.order_no}?t=${order.token}`;
   const pickup = order.shipping_method === 'pickup';
+  if (order.kind === 'coin') {
+    const d = order.order_no.replace('PK', '');
+    if (kind === 'paid') return `${order.name} 様\n\n${c.coin.name} ${order.coins.toLocaleString()} を付与しました。オリパのページからすぐにお使いいただけます。${c.coin.expireMonths ? `\n有効期限は付与から${c.coin.expireMonths}か月です。` : ''}\n\n■ 注文番号: ${order.order_no}\n${c.shopName}`;
+    if (kind === 'created') return `${order.name} 様\n\n${c.coin.name}のご購入ありがとうございます。\n■ 注文番号: ${order.order_no}\n${c.coin.name} ${order.coins.toLocaleString()}　お支払い金額 ${yen(order.total)}\n\n■ お振込先\n${c.bankInfo}\n\n※ 振込名義の前に注文番号の数字（${d}）を入れてください。\n※ お支払い期限: ご注文から${c.paymentDays}日以内。ご入金を確認次第、${c.coin.name}を付与します。\n\nご注文状況の確認: ${url}\n\n${c.shopName}`;
+  }
   const head = {
     created: `${order.name} 様\n\nこの度は${c.shopName}をご利用いただきありがとうございます。\n以下の内容でご注文を承りました。`,
     paid: `${order.name} 様\n\n${order.payment_method === 'card' ? 'カード決済が完了しました。' : order.payment_method === 'points' ? 'ポイントでのお支払いが完了しました。' : 'ご入金を確認いたしました。'}${hasOripa ? '\nオリパは下記のページから開封できます。' : ''}${pickup ? '店頭でのお受け取り準備ができ次第ご案内します。' : '発送まで今しばらくお待ちください。'}`,
@@ -709,7 +830,14 @@ async function adminRoutesInner(req, env, path, url) {
       `SELECT COALESCE(SUM(oi.price*oi.qty),0) AS sales, COALESCE(SUM(oi.qty),0) AS draws FROM order_items oi JOIN orders o ON o.id = oi.order_id
         WHERE oi.oripa_id > 0 AND o.status IN ('paid','shipped') AND COALESCE(o.paid_at, o.created_at) >= datetime('now','-30 days')`
     ).first();
-    return json({ today, week, month, status: Object.fromEntries(counts.results.map(r => [r.status, r.n])), top, waiting, daily, stock, members, oripa });
+    const coins = await env.DB.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN paid = 1 THEN remaining END),0) AS paid_unused, COALESCE(SUM(remaining),0) AS unused FROM coin_lots WHERE remaining > 0 AND (expires_at IS NULL OR expires_at > datetime('now'))`
+    ).first();
+    const coinSales = await env.DB.prepare(`SELECT COALESCE(SUM(total),0) AS sales FROM orders WHERE kind = 'coin' AND status = 'shipped' AND paid_at >= datetime('now','-30 days')`).first();
+    const prizeBox = await env.DB.prepare('SELECT COUNT(*) AS n FROM oripa_draws WHERE customer_id IS NOT NULL AND order_id IS NULL').first();
+    const paidStatus = await env.DB.prepare(`SELECT COUNT(*) AS n FROM orders WHERE status = 'paid' AND kind != 'coin'`).first();
+    return json({ today, week, month, status: Object.fromEntries(counts.results.map(r => [r.status, r.n])), to_ship: paidStatus.n, top, waiting, daily, stock, members, oripa,
+      coins: { ...coins, sales30: coinSales.sales, prize_box: prizeBox.n, expireMonths: c.coin.expireMonths } });
   }
 
   // 商品
@@ -779,7 +907,8 @@ async function adminRoutesInner(req, env, path, url) {
         const subj = order.shipping_method === 'pickup' ? 'お受け取りの準備ができました' : '商品を発送しました';
         if (body.notify !== false) await sendMail(env, order.email, `【${c.shopName}】${subj}（${order.order_no}）`, orderMailText(env, o2, items, 'shipped'));
       } else if (to === 'cancelled') {
-        if (!(await releaseOrder(env, id, 'cancelled', ['awaiting_payment', 'paid']))) throw new HttpError(400, 'この注文はキャンセルできません');
+        const from = order.kind === 'coin' ? ['awaiting_payment', 'shipped'] : ['awaiting_payment', 'paid'];
+        if (!(await releaseOrder(env, id, 'cancelled', from))) throw new HttpError(400, 'この注文はキャンセルできません');
       } else throw new HttpError(400, 'このステータスには変更できません');
     }
     return json({ ok: true });
@@ -813,6 +942,8 @@ async function adminRoutesInner(req, env, path, url) {
 
   const r1 = await adminMemberRoutes(req, env, path, url);
   if (r1) return r1;
+  const r3 = await adminCoinRoutes(req, env, path);
+  if (r3) return r3;
   const r2 = await adminOripaRoutes(req, env, path);
   if (r2) return r2;
   throw new HttpError(404, 'not found');
@@ -872,6 +1003,10 @@ async function handle(req, env) {
     return json(c2);
   }
   if (path === '/api/orders' && req.method === 'POST') return createOrder(req, env);
+  if (path === '/api/coins/buy' && req.method === 'POST') return createCoinOrder(req, env);
+  if (path === '/api/me/prizes/ship' && req.method === 'POST') return createShipRequest(req, env);
+  const rc = await coinRoutes(req, env, path);
+  if (rc) return rc;
   m = path.match(/^\/api\/orders\/(PK\d{6})$/);
   if (m && req.method === 'GET') return getOrderPublic(env, await findOrderByToken(env, m[1], url.searchParams.get('t')));
   m = path.match(/^\/api\/orders\/(PK\d{6})\/reveal$/);
@@ -937,6 +1072,7 @@ export default {
       await loadConfig(env);
       await expireOverdueOrders(env);
       await expirePoints(env);
+      await expireCoins(env);
       await cleanup(env);
     })());
   },

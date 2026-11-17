@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS orders (
   order_no        TEXT    NOT NULL UNIQUE,   -- 例: PK123456
   token           TEXT    NOT NULL,          -- 注文確認ページ用の秘密トークン
   status          TEXT    NOT NULL,          -- awaiting_payment / paid / shipped / cancelled / expired
+  kind            TEXT    NOT NULL DEFAULT 'normal', -- normal=通常注文 / coin=コイン購入 / ship=オリパ当選品の発送依頼
+  coins           INTEGER NOT NULL DEFAULT 0, -- コイン購入で付与するコイン数
   payment_method  TEXT    NOT NULL,          -- bank / card
   shipping_method TEXT    NOT NULL DEFAULT 'delivery', -- delivery / pickup
   customer_id     INTEGER,                   -- 会員の場合
@@ -131,6 +133,7 @@ CREATE TABLE IF NOT EXISTS customers (
   zip                TEXT    DEFAULT '',
   address            TEXT    DEFAULT '',
   points             INTEGER NOT NULL DEFAULT 0,
+  coins              INTEGER NOT NULL DEFAULT 0,   -- オリパ用コイン残高（有効なロットの合計）
   points_updated_at  TEXT,
   failed_logins      INTEGER NOT NULL DEFAULT 0,
   locked_until       TEXT,
@@ -204,13 +207,15 @@ CREATE INDEX IF NOT EXISTS idx_prizes_oripa ON oripa_prizes(oripa_id);
 CREATE TABLE IF NOT EXISTS oripa_draws (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   oripa_id     INTEGER NOT NULL,
-  order_id     INTEGER NOT NULL,
+  order_id     INTEGER,                    -- 注文（コインで引いた分は発送依頼したときに発送用の注文が入る）
+  customer_id  INTEGER,                    -- コインで引いた会員
   prize_id     INTEGER NOT NULL,
   is_last_one  INTEGER NOT NULL DEFAULT 0,
   revealed_at  TEXT,
   created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_draws_order ON oripa_draws(order_id);
+CREATE INDEX IF NOT EXISTS idx_draws_customer ON oripa_draws(customer_id, order_id);
 CREATE INDEX IF NOT EXISTS idx_draws_oripa ON oripa_draws(oripa_id, revealed_at);
 
 -- メールアドレス確認
@@ -242,3 +247,26 @@ CREATE TABLE IF NOT EXISTS admin_log (
   ip      TEXT,
   action  TEXT NOT NULL
 );
+
+-- コイン（オリパ用の前払いポイント）。購入ごとに有効期限つきのロットで管理
+CREATE TABLE IF NOT EXISTS coin_lots (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  INTEGER NOT NULL,
+  amount       INTEGER NOT NULL,
+  remaining    INTEGER NOT NULL,
+  paid         INTEGER NOT NULL DEFAULT 1,  -- 1=お金で購入 / 0=無償付与
+  expires_at   TEXT,                        -- NULL=期限なし
+  order_id     INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_coin_lots ON coin_lots(customer_id, remaining, expires_at);
+
+CREATE TABLE IF NOT EXISTS coin_ledger (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  INTEGER NOT NULL,
+  delta        INTEGER NOT NULL,
+  reason       TEXT    NOT NULL,
+  order_id     INTEGER,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_coin_ledger ON coin_ledger(customer_id, id);

@@ -35,6 +35,7 @@ export const DEFAULTS = {
     buyback: true,        // 買取価格の表示
     restock: true,        // 入荷通知
     phoneVerify: false,   // 電話番号（SMS）認証。TWILIO_* の設定が必要
+    coins: true,          // オリパをコインで引く（コインを購入 → 即抽選 → 当選品は発送依頼）。OFFなら注文ごとの購入
     coupons: true,        // クーポン
     members: true,        // 会員登録・ログイン
     points: true,         // ポイント制度（会員登録が必要）
@@ -53,6 +54,19 @@ export const DEFAULTS = {
     grantOn: 'shipped',   // 付与タイミング shipped=発送時 / paid=入金時
     oripaEarn: false,     // オリパ購入分にもポイントを付与する
     oripaUse: false,      // オリパにポイントを使える
+  },
+
+  coin: {
+    name: 'コイン',
+    expireMonths: 6,      // 購入から失効までの月数（6以内なら資金決済法の前払式支払手段の対象外。0=期限なし）
+    shipFee: 0,           // 当選品の発送依頼1回あたりの送料（コイン）
+    packs: [              // 購入パック（価格円 → 付与コイン）
+      { price: 1000, coins: 1000 },
+      { price: 3000, coins: 3000 },
+      { price: 5000, coins: 5000 },
+      { price: 10000, coins: 10000 },
+      { price: 30000, coins: 30000 },
+    ],
   },
 
   phone: {
@@ -124,6 +138,12 @@ function finalize(c) {
   c.points.minUse = Math.max(1, c.points.minUse);
   if (!['shipped', 'paid'].includes(c.points.grantOn)) c.points.grantOn = 'shipped';
   c.oripa.maxPerOrder = Math.min(500, Math.max(1, c.oripa.maxPerOrder));
+  c.coin.expireMonths = Math.min(120, Math.max(0, c.coin.expireMonths));
+  c.coin.shipFee = Math.max(0, c.coin.shipFee);
+  c.coin.packs = (c.coin.packs || []).map(p => ({ price: int(p?.price), coins: int(p?.coins) }))
+    .filter(p => p.price >= 100 && p.coins > 0 && p.coins <= p.price * 2).slice(0, 10);
+  if (!c.coin.packs.length) c.coin.packs = clone(DEFAULTS.coin.packs);
+  if (!c.features.members || !c.features.oripa) c.features.coins = false;
   if (!/^#[0-9a-fA-F]{6}$/.test(c.accentColor)) c.accentColor = DEFAULTS.accentColor;
   c.categories = (c.categories || []).map(x => ({ key: str(x?.key, 20).toLowerCase(), label: str(x?.label, 30) }))
     .filter(x => /^[a-z0-9_-]{1,20}$/.test(x.key) && x.label).slice(0, 30);

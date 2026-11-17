@@ -11,7 +11,7 @@
   document.getElementById('sn').textContent = c.shopName;
   document.getElementById('lm').textContent = c.logoText || 'PK';
   document.title = `特定商取引法に基づく表記｜${c.shopName}`;
-  const pays = [c.cardEnabled && 'クレジットカード（Stripe）', c.bankEnabled && '銀行振込（前払い）', c.features.points && 'ポイント（1pt＝1円）'].filter(Boolean).join('、');
+  const pays = [c.cardEnabled && 'クレジットカード（Stripe）', c.bankEnabled && '銀行振込（前払い）', c.features.points && 'ポイント（1pt＝1円）', c.features.coins && `${c.coin.name}（オリパのみ）`].filter(Boolean).join('、');
   const days = c.shipDays.map(d => '日月火水木金土'[d]).join('・');
   document.getElementById('doc').innerHTML = `
     <h1>特定商取引法に基づく表記</h1>
@@ -42,7 +42,16 @@
     ${c.features.oripa ? `<h2 id="oripa">オリパについて</h2><ul>
       <li>${esc(c.oripa.notice)}</li><li>${esc(c.oripa.ageNotice)}</li>
       <li>総口数・賞ごとの封入数・全体の残り口数は販売ページで公開しています。販売開始後に封入内容を変更することはありません。</li>
-      <li>抽選はご注文時に行い、ご入金確認後に結果を開封できます。ご注文がキャンセル・期限切れとなった場合、抽選結果は無効となり山に戻ります。</li></ul>` : ''}
+      ${c.features.coins ? `<li>オリパは${esc(c.coin.name)}で引き、結果はその場で表示されます。当選したカードはマイページの「獲得カード」から発送を依頼してください（実物の発送のみ）。</li>` : '<li>抽選はご注文時に行い、ご入金確認後に結果を開封できます。ご注文がキャンセル・期限切れとなった場合、抽選結果は無効となり山に戻ります。</li>'}</ul>` : ''}
+    ${c.features.coins ? `<h2 id="coin">${esc(c.coin.name)}について</h2>
+    <dl>
+      <dt>名称</dt><dd>${esc(c.coin.name)}</dd>
+      <dt>発行者</dt><dd>${v(L.seller, '販売業者')}</dd>
+      <dt>使える場所</dt><dd>当サイトのオリパ（1${esc(c.coin.name)}＝1円相当）</dd>
+      <dt>有効期限</dt><dd>${c.coin.expireMonths ? `付与から${c.coin.expireMonths}か月。期限を過ぎた${esc(c.coin.name)}は失効します。残高と期限はマイページで確認できます。` : '有効期限はありません。'}</dd>
+      <dt>払い戻し</dt><dd>購入した${esc(c.coin.name)}の払い戻し・換金はできません（法令で定める場合を除く）。当選したカードを${esc(c.coin.name)}や現金に交換することもできません。</dd>
+      <dt>お問い合わせ</dt><dd>${v(L.email, 'メールアドレス')}</dd>
+    </dl>` : ''}
     ${c.features.points ? `<h2 id="points">ポイントについて</h2><ul>
       <li>会員登録で${c.points.signupBonus}ポイント、お買い物金額（送料・ポイント利用分を除く）の${c.points.rate}%を${c.points.grantOn === 'paid' ? '入金確認時' : '発送時'}に付与します。</li>
       <li>1ポイント＝1円として次回以降のお買い物にご利用いただけます。現金への交換はできません。</li>

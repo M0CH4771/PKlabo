@@ -109,10 +109,12 @@
         <div class="stat"><span class="sub2">7日間</span><b>${yen(s.week.sales)}</b><span class="sub2">${s.week.orders}件</span></div>
         <div class="stat"><span class="sub2">30日間</span><b>${yen(s.month.sales)}</b><span class="sub2">${s.month.orders}件・客単価${s.month.orders ? yen(Math.round(s.month.sales / s.month.orders)) : '-'}</span></div>
         <div class="stat" style="cursor:pointer" data-go="awaiting_payment"><span class="sub2">入金待ち</span><b>${s.status.awaiting_payment || 0}件</b></div>
-        <div class="stat" style="cursor:pointer" data-go="paid"><span class="sub2">発送待ち</span><b class="${s.status.paid ? 'danger' : ''}">${s.status.paid || 0}件</b></div>
+        <div class="stat" style="cursor:pointer" data-go="paid"><span class="sub2">発送待ち</span><b class="${s.to_ship ? 'danger' : ''}">${s.to_ship || 0}件</b></div>
         <div class="stat"><span class="sub2">公開中の在庫</span><b>${s.stock.units}点</b><span class="sub2">${s.stock.items}商品・販売額${yen(s.stock.value)}</span></div>
         <div class="stat"><span class="sub2">会員</span><b>${s.members.n}人</b><span class="sub2">30日で+${s.members.new30 || 0}・未使用ポイント${s.members.points.toLocaleString()}pt</span></div>
-        <div class="stat"><span class="sub2">オリパ（30日）</span><b>${yen(s.oripa.sales)}</b><span class="sub2">${s.oripa.draws}口</span></div>
+        <div class="stat"><span class="sub2">オリパ（30日・注文分）</span><b>${yen(s.oripa.sales)}</b><span class="sub2">${s.oripa.draws}口</span></div>
+        ${s.coins ? `<div class="stat"><span class="sub2">${esc(settings?.coin?.name || 'コイン')}販売（30日）</span><b>${yen(s.coins.sales30)}</b><span class="sub2">獲得カードBOX ${s.coins.prize_box}枚が未発送</span></div>
+        <div class="stat"><span class="sub2">未使用${esc(settings?.coin?.name || 'コイン')}（購入分）</span><b class="${(s.coins.expireMonths === 0 || s.coins.expireMonths > 6) && s.coins.paid_unused > 8000000 ? 'danger' : ''}">${Number(s.coins.paid_unused).toLocaleString()}</b><span class="sub2">${s.coins.expireMonths && s.coins.expireMonths <= 6 ? `有効期限${s.coins.expireMonths}か月のため資金決済法の届出対象外` : '3月末・9月末に1,000万円を超えると財務局への届出が必要'}</span></div>` : ''}
       </div>
       <div class="panel" style="margin-bottom:12px"><b>30日間の売上（入金済み）</b>
         <div class="bars">${days.map(d => { const v = map[d]?.sales || 0; return `<div style="height:${Math.round(v / max * 100)}%" data-t="${d.slice(5)} ${yen(v)}"></div>`; }).join('')}</div>
@@ -155,10 +157,11 @@
           <div class="order" data-id="${o.id}">
             <div class="row-between">
               <span class="sel">${orderFilter === 'paid' ? `<input type="checkbox" class="osel" checked>` : ''}<strong class="mono">${esc(o.order_no)}</strong>
-                ${o.shipping_method === 'pickup' ? '<span class="pill">店頭受取</span>' : ''}${o.customer_id ? '<span class="pill">会員</span>' : ''}${o.coupon_code ? `<span class="pill">${esc(o.coupon_code)}</span>` : ''}${o.draws.length ? '<span class="pill">オリパ</span>' : ''}</span>
-              <span class="status s-${esc(o.status)}">${STATUS[o.status]}</span>
+                ${o.kind === 'coin' ? `<span class="pill">${esc(settings?.coin?.name || 'コイン')}購入 ${Number(o.coins).toLocaleString()}</span>` : ''}${o.kind === 'ship' ? '<span class="pill">オリパ当選品の発送</span>' : ''}${o.shipping_method === 'pickup' ? '<span class="pill">店頭受取</span>' : ''}${o.customer_id ? '<span class="pill">会員</span>' : ''}${o.coupon_code ? `<span class="pill">${esc(o.coupon_code)}</span>` : ''}${o.draws.length ? '<span class="pill">オリパ</span>' : ''}</span>
+              <span class="status s-${esc(o.status)}">${o.kind === 'coin' && o.status === 'shipped' ? '付与済み' : STATUS[o.status]}</span>
             </div>
-            <div class="small">${jst(o.created_at)}　${{ bank: '銀行振込', card: 'カード', points: 'ポイント' }[o.payment_method]}　<strong>${yen(o.total)}</strong>${o.discount ? `（クーポン-${yen(o.discount)}）` : ''}${o.points_used ? `（ポイント-${o.points_used}）` : ''}（送料${yen(o.shipping_fee)}）${o.points_earn ? `　付与予定${o.points_earn}pt${o.points_granted ? '済' : ''}` : ''}</div>
+            <div class="small">${jst(o.created_at)}　${{ bank: '銀行振込', card: 'カード', points: 'ポイント', coin: esc(settings?.coin?.name || 'コイン') }[o.payment_method]}　<strong>${yen(o.total)}</strong>${o.discount ? `（クーポン-${yen(o.discount)}）` : ''}${o.points_used ? `（ポイント-${o.points_used}）` : ''}（送料${yen(o.shipping_fee)}）${o.points_earn ? `　付与予定${o.points_earn}pt${o.points_granted ? '済' : ''}` : ''}</div>
+            ${o.kind === 'coin' && o.status === 'awaiting_payment' ? '<div class="small">入金確認するとコインが付与され、この注文は完了になります。</div>' : ''}
             ${o.payment_method === 'bank' && o.status === 'awaiting_payment' ? `<div class="hint">振込名義の目印：<b>${esc(o.order_no.replace('PK', ''))}</b> ${esc(o.kana || o.name)}　金額 <b>${yen(o.total)}</b>　期限 ${jst(o.expires_at)}</div>` : ''}
             <div class="small">${esc(o.name)}${o.kana ? `（${esc(o.kana)}）` : ''} ／ ${esc(o.phone)} ／ ${esc(o.email)}${o.shipping_method === 'pickup' ? '' : `<br>〒${esc(o.zip)} ${esc(o.address)}`}</div>
             ${o.note ? `<div class="small">備考：${esc(o.note)}</div>` : ''}
@@ -170,7 +173,9 @@
                 <select class="car">${Object.entries(CARRIERS).map(([k, l]) => `<option value="${k}" ${o.carrier === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
                 <input class="trk" placeholder="追跡番号" value="${esc(o.tracking_no)}" inputmode="numeric"><button class="btn sm primary" data-act="shipped">発送済みにする</button>`) : ''}
               ${o.status === 'shipped' && o.tracking_no ? `<span class="small">${esc(CARRIERS[o.carrier] || '')} <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
-              ${['awaiting_payment', 'paid'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">キャンセル（在庫・オリパ・ポイントを戻す）</button>` : ''}
+              ${o.kind === 'coin' ? (['awaiting_payment', 'shipped'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">${o.status === 'shipped' ? 'キャンセル（付与したコインを取り消す）' : 'キャンセル'}</button>` : '')
+                : o.kind === 'ship' ? (o.status === 'paid' ? `<button class="btn sm" data-act="cancelled">キャンセル（当選品はお客様のBOXに戻す）</button>` : '')
+                : (['awaiting_payment', 'paid'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">キャンセル（在庫・オリパ・ポイントを戻す）</button>` : '')}
               <button class="btn sm" data-act="memo">メモ保存</button>
             </div>
           </div>`).join('') || '<p class="muted pad center">該当する注文はありません</p>'}
@@ -198,8 +203,8 @@
       download(`shipping_${today()}.csv`, [['注文番号', 'お届け先郵便番号', 'お届け先住所', 'お届け先氏名', 'お届け先電話番号', '品名', '合計金額'], ...rows.map(o => [o.order_no, o.zip, o.address, o.name, o.phone, 'トレーディングカード', o.total])]);
     };
     const oc = $('#ocsv'); if (oc) oc.onclick = () => download(`orders_${orderFilter}_${today()}.csv`, [
-      ['注文番号', '日時', '状況', '支払い', '受取', '氏名', 'メール', '電話', '郵便番号', '住所', '小計', 'クーポン', 'ポイント利用', '送料', '合計', '内容', '追跡番号', 'メモ'],
-      ...list.map(o => [o.order_no, jst(o.created_at, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), STATUS[o.status], o.payment_method, o.shipping_method === 'pickup' ? '店頭' : '配送', o.name, o.email, o.phone, o.zip, o.address, o.subtotal, o.discount, o.points_used, o.shipping_fee, o.total,
+      ['注文番号', '種類', '日時', '状況', '支払い', '受取', '氏名', 'メール', '電話', '郵便番号', '住所', '小計', 'クーポン', 'ポイント利用', '送料', '合計', '内容', '追跡番号', 'メモ'],
+      ...list.map(o => [o.order_no, { normal: '通常', coin: 'コイン購入', ship: '当選品発送' }[o.kind] || o.kind, jst(o.created_at, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), STATUS[o.status], o.payment_method, o.shipping_method === 'pickup' ? '店頭' : '配送', o.name, o.email, o.phone, o.zip, o.address, o.subtotal, o.discount, o.points_used, o.shipping_fee, o.total,
         [...o.items.map(i => i.oripa_id ? `オリパ ${i.name}×${i.qty}` : `${i.name} ${i.card_no} ${i.condition}×${i.qty}`), ...o.draws.map(d => `当選:${d.rank} ${d.name}`)].join(' / '), o.tracking_no, o.admin_memo])]);
   }
 
@@ -595,6 +600,7 @@
     $('#mcsv').onclick = () => download(`members_${today()}.csv`, [['ID', 'お名前', 'フリガナ', 'メール', '電話', 'ポイント', '注文数', '購入額', '登録日', '最終ログイン'], ...r.members.map(m => [m.id, m.name, m.kana, m.email, m.phone, m.points, m.orders, m.spent, m.created_at, m.last_login_at || ''])]);
     $$('[data-m]').forEach(b => b.onclick = async () => {
       const x = await api(`/api/admin/members/${b.dataset.m}`);
+      const cx = settings?.features?.coins ? await api(`/api/admin/members/${b.dataset.m}/coins`).catch(() => null) : null;
       const d = $('#dlg');
       d.innerHTML = `<form method="dialog" class="form" id="mf"><h2 style="margin:0">${esc(x.customer.name)} 様</h2>
         <p class="small">${esc(x.customer.email)} ／ ${esc(x.customer.phone)}<br>〒${esc(x.customer.zip)} ${esc(x.customer.address)}</p>
@@ -602,9 +608,18 @@
           <div class="grid3"><label>増減<input name="delta" type="number" placeholder="+500 / -100"></label><label style="grid-column:span 2">理由<input name="reason" placeholder="お詫び・キャンペーンなど"></label></div>
           <button type="button" class="btn sm primary" id="padj">ポイントを調整</button>
           <div class="overflow" style="max-height:200px"><table class="t">${x.ledger.map(l => `<tr><td class="small">${jst(l.created_at)}</td><td class="small">${esc(l.reason)}</td><td class="num ${l.delta > 0 ? 'ok' : 'danger'}">${l.delta > 0 ? '+' : ''}${l.delta}</td></tr>`).join('')}</table></div></div>
+        ${cx ? `<div class="fs" style="background:var(--bg)"><h3>${esc(settings.coin.name)} ${cx.coins.toLocaleString()}　<span class="small muted">獲得カードBOX ${cx.prize_box}枚</span></h3>
+          <div class="grid3"><label>増減<input name="cdelta" type="number" placeholder="+500 / -100"></label><label style="grid-column:span 2">理由<input name="creason" placeholder="お詫び・キャンペーンなど（付与分は無償扱い）"></label></div>
+          <button type="button" class="btn sm primary" id="cadj">${esc(settings.coin.name)}を調整</button>
+          <div class="overflow" style="max-height:200px"><table class="t">${cx.ledger.map(l => `<tr><td class="small">${jst(l.created_at)}</td><td class="small">${esc(l.reason)}</td><td class="num ${l.delta > 0 ? 'ok' : 'danger'}">${l.delta > 0 ? '+' : ''}${l.delta}</td></tr>`).join('')}</table></div></div>` : ''}
         <div class="fs"><h3>注文履歴</h3><table class="t">${x.orders.map(o => `<tr><td class="mono small">${esc(o.order_no)}</td><td class="small">${jst(o.created_at)}</td><td class="small">${STATUS[o.status]}</td><td class="num">${yen(o.total)}</td></tr>`).join('') || '<tr><td class="muted">なし</td></tr>'}</table></div>
         <button class="btn">閉じる</button></form>`;
       d.showModal();
+      const ca = $('#cadj');
+      if (ca) ca.onclick = async () => {
+        const f = $('#mf');
+        try { await api(`/api/admin/members/${b.dataset.m}/coins`, { method: 'POST', body: JSON.stringify({ delta: f.cdelta.value, reason: f.creason.value }) }); d.close(); toast('調整しました'); viewMembers(); } catch (e) { toast(e.message); }
+      };
       $('#padj').onclick = async () => {
         const f = $('#mf');
         try { await api(`/api/admin/members/${b.dataset.m}/points`, { method: 'POST', body: JSON.stringify({ delta: f.delta.value, reason: f.reason.value }) }); d.close(); toast('ポイントを調整しました'); viewMembers(); } catch (e) { toast(e.message); }
@@ -655,6 +670,7 @@
     ['members', '会員登録・ログイン', 'マイページ・注文履歴・住所の保存'],
     ['points', 'ポイント制度', '会員登録が必要です'],
     ['oripa', 'オリパ', '口数・封入数を公開する抽選販売'],
+    ['coins', 'オリパをコインで引く', 'コインを購入 → その場で抽選 → 当選品は発送依頼。OFFなら注文ごとに購入'],
     ['guestCheckout', '会員登録なしで購入', 'オフにすると購入にログインが必要'],
     ['coupons', 'クーポン', ''],
     ['deck', 'デッキリスト一括購入', ''],
@@ -713,9 +729,17 @@
           <div class="grid3">${inp('p_rate', '還元率（%）', s.points.rate, 'number', 'min="0" max="100"')}${inp('p_signupBonus', '新規登録ボーナス（pt）', s.points.signupBonus, 'number')}${inp('p_expireDays', '有効期限（最終利用から日数・0=無期限）', s.points.expireDays, 'number')}
             ${inp('p_minUse', '1回に使える最小ポイント', s.points.minUse, 'number')}
             <label>付与タイミング<select name="p_grantOn" style="width:100%"><option value="shipped" ${s.points.grantOn === 'shipped' ? 'selected' : ''}>発送したとき</option><option value="paid" ${s.points.grantOn === 'paid' ? 'selected' : ''}>入金確認したとき</option></select></label></div>
-          <label class="check"><input type="checkbox" name="p_oripaEarn" ${s.points.oripaEarn ? 'checked' : ''}> オリパ購入分にもポイントを付与する</label>
-          <label class="check"><input type="checkbox" name="p_oripaUse" ${s.points.oripaUse ? 'checked' : ''}> オリパの支払いにポイントを使えるようにする</label>
-          <p class="hint2">※オリパとポイントを循環させる仕組みは換金性が問題視されています。オフのままを推奨します。</p>
+          <label class="check"><input type="checkbox" name="p_oripaEarn" ${s.points.oripaEarn ? 'checked' : ''}> オリパ購入分にもポイントを付与する（注文で買う方式のときのみ）</label>
+          <label class="check"><input type="checkbox" name="p_oripaUse" ${s.points.oripaUse ? 'checked' : ''}> オリパの支払いにポイントを使えるようにする（注文で買う方式のときのみ）</label>
+          <p class="hint2">※オリパとポイントを循環させる仕組みは換金性が問題視されています。オフのままを推奨します。コイン方式ではポイントとコインは別物で、行き来できません。</p>
+        </div>
+
+        <div class="fs"><h3>コイン（オリパ用）</h3>
+          <div class="grid3">${inp('c_name', '名前', s.coin.name)}${inp('c_expireMonths', '有効期限（購入から何か月・0=無期限）', s.coin.expireMonths, 'number', 'min="0" max="120"')}${inp('c_shipFee', '当選品の発送料（コイン・0=無料）', s.coin.shipFee, 'number', 'min="0"')}</div>
+          <p class="hint2">有効期限を6か月以内にしておくと、資金決済法の「前払式支払手段」に当たらず、届出や供託が不要です。6か月を超える・無期限にする場合は、3月末・9月末の未使用残高が1,000万円を超えたら財務局への届出と残高の半額の供託が必要になります（ダッシュボードで残高を確認できます）。当選カードをコインに戻す機能はありません。</p>
+          <b class="small">購入パック（価格 → 付与するコイン）</b>
+          <div class="rows" id="packs">${s.coin.packs.map(p => `<div class="r"><input data-pp type="number" value="${p.price}" placeholder="価格（円）"><input data-pc type="number" value="${p.coins}" placeholder="付与コイン"><button type="button" class="link danger" data-x>削除</button></div>`).join('')}</div>
+          <button type="button" class="btn sm" id="addpack">＋ パックを追加</button>
         </div>
 
         <div class="fs"><h3>電話番号（SMS）認証</h3>
@@ -756,6 +780,7 @@
     const bindX = () => $$('[data-x]').forEach(b => b.onclick = () => b.closest('.r').remove());
     bindX();
     $('#addcat').onclick = () => { $('#cats').insertAdjacentHTML('beforeend', rowHtml('data-ck placeholder="key"', 'data-cl placeholder="表示名"')); bindX(); };
+    $('#addpack').onclick = () => { $('#packs').insertAdjacentHTML('beforeend', `<div class="r"><input data-pp type="number" placeholder="価格（円）"><input data-pc type="number" placeholder="付与コイン"><button type="button" class="link danger" data-x>削除</button></div>`); bindX(); };
     $('#addcond').onclick = () => { $('#conds').insertAdjacentHTML('beforeend', rowHtml('data-gk placeholder="状態"', 'data-gv placeholder="説明"')); bindX(); };
     $('#sf').onsubmit = async e => {
       e.preventDefault();
@@ -769,6 +794,7 @@
         features: Object.fromEntries(FEATURE_LABELS.map(([k]) => [k, !!g('f_' + k)])),
         points: { rate: g('p_rate'), signupBonus: g('p_signupBonus'), expireDays: g('p_expireDays'), minUse: g('p_minUse'), grantOn: g('p_grantOn'), oripaEarn: !!g('p_oripaEarn'), oripaUse: !!g('p_oripaUse') },
         phone: { forBonus: !!g('ph_forBonus'), forOripa: !!g('ph_forOripa') },
+        coin: { name: g('c_name'), expireMonths: g('c_expireMonths'), shipFee: g('c_shipFee'), packs: $$('#packs .r').map(r => ({ price: $('[data-pp]', r).value, coins: $('[data-pc]', r).value })).filter(p => p.price && p.coins) },
         oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), ageNotice: g('o_ageNotice') },
         categories: $$('#cats .r').map(r => ({ key: $('[data-ck]', r).value, label: $('[data-cl]', r).value })).filter(c => c.key && c.label),
         condGuide: $$('#conds .r').map(r => [$('[data-gk]', r).value, $('[data-gv]', r).value]).filter(x => x[0]),
