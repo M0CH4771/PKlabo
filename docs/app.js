@@ -300,7 +300,11 @@
       </dialog>`;
 
     const qi = $('#q');
-    qi.addEventListener('input', debounce(() => { F.q = qi.value; shown = PAGE; viewList(); const n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250));
+    let composing = false;
+    qi.addEventListener('compositionstart', () => { composing = true; });
+    qi.addEventListener('compositionend', () => { composing = false; qi.dispatchEvent(new Event('input')); });
+    qi.addEventListener('input', debounce(() => {
+      if (composing) return; F.q = qi.value; shown = PAGE; viewList(); const n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250));
     $$('[data-cat]').forEach(b => b.onclick = () => { F.cat = b.dataset.cat; F.sets = []; F.rarities = []; F.conds = []; shown = PAGE; viewList(); });
     $('#instock').onchange = e => { F.inStock = e.target.checked; viewList(); };
     $('#sort').onchange = e => { F.sort = e.target.value; viewList(); };
@@ -763,7 +767,8 @@
       $('#addr').hidden = pickup;
       try {
         const q = await getQuote({ points_use: pointsUse, shipping_method: pickup ? 'pickup' : 'delivery' });
-        if (f.points && q.points_use !== pointsUse && pointsUse) { pointsUse = q.points_use; f.points.value = pointsUse || ''; }
+        // 入力中は欄を書き換えない（1桁目で「最低利用ポイント未満→0」に戻されて打てなくなるため）
+        if (f.points && q.points_use !== pointsUse && pointsUse) { pointsUse = q.points_use; if (document.activeElement !== f.points) f.points.value = pointsUse || ''; }
         $('#sum').innerHTML = summaryHtml(q, { lines: itemLines, pickup });
         $('#payfs').hidden = q.total === 0;
         f._quote = q;
@@ -773,6 +778,7 @@
     $$('[name=ship]').forEach(r => r.onchange = () => { pickup = f.ship.value === 'pickup'; draw(); });
     if (f.points) {
       f.points.oninput = () => { pointsUse = Math.max(0, Math.min(+f.points.value || 0, me.customer.points)); draw(); };
+      f.points.onblur = () => draw();
       $('#ptsall').onclick = async () => { const q = await getQuote({ points_use: me.customer.points, shipping_method: pickup ? 'pickup' : 'delivery' }); pointsUse = q.points_use; f.points.value = pointsUse || ''; draw(); };
     }
     f.zip.addEventListener('input', async () => {

@@ -302,7 +302,8 @@
         </table>
       </div>`;
     const pq = $('#pq');
-    pq.oninput = () => { productQ = pq.value; clearTimeout(drawProducts._t); drawProducts._t = setTimeout(() => { drawProducts(); const n = $('#pq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    pq.addEventListener('compositionend', () => pq.oninput({}));
+    pq.oninput = e => { if (e.isComposing) return; productQ = pq.value; clearTimeout(drawProducts._t); drawProducts._t = setTimeout(() => { drawProducts(); const n = $('#pq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     $('#new').onclick = () => editProduct(null);
     const rowP = b => productsCache.find(p => p.id === +b.closest('tr').dataset.id);
     $$('[data-edit]').forEach(b => b.onclick = () => editProduct(rowP(b)));
@@ -769,27 +770,34 @@
     const locked = o && o.sold > 0;
     let prizes = v.prizes.map(p => ({ ...p }));
     let image = v.image_url || '';
-    const draw = () => {
+    // 合計・還元率だけ書き換える（入力中の欄を作り直すと1文字ごとにフォーカスが外れるため）
+    const sum = () => {
       const pool = prizes.filter(p => !p.is_last_one);
       const total = pool.reduce((s, p) => s + (+p.qty || 0), 0);
       const value = pool.reduce((s, p) => s + (+p.qty || 0) * (+p.value || 0), 0);
+      const price = +$('#of').price.value || 0;
+      const el = $('#przsum');
+      if (el) el.innerHTML = `総口数 <b>${total}口</b>　賞品の参考価格合計 ${yen(value)}　売上見込み ${yen(total * price)}　<b>還元率（参考） ${total && price ? Math.round(value / (total * price) * 100) : 0}%</b>`;
+    };
+    const draw = () => {
       $('#prz').innerHTML = `
         <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>LO</span><span></span></div>
         ${prizes.map((p, i) => `<div class="r p6" data-i="${i}">
           <input data-k="rank" value="${esc(p.rank)}" placeholder="S賞">
           <span style="display:flex;gap:4px"><input data-k="name" value="${esc(p.name)}" placeholder="賞品名"><button type="button" class="btn sm" style="flex:none" data-pick="${i}" title="登録済みの商品から選ぶ">商品</button></span>
-          <span style="display:flex;gap:4px"><input data-k="image_url" value="${esc(p.image_url)}" placeholder="https://"><label class="btn sm" style="flex:none">📷<input type="file" accept="image/*" data-up="${i}" hidden></label></span>
+          <span style="display:flex;gap:4px"><input data-k="image_url" value="${esc(p.image_url)}" placeholder="https://"><label class="btn sm" style="flex:none">画像<input type="file" accept="image/*" data-up="${i}" hidden></label></span>
           <input data-k="qty" type="number" min="0" value="${p.is_last_one ? 1 : esc(p.qty)}" ${locked || p.is_last_one ? 'disabled' : ''}>
           <input data-k="value" type="number" min="0" value="${esc(p.value)}">
           <input data-k="is_last_one" type="checkbox" ${p.is_last_one ? 'checked' : ''} ${locked ? 'disabled' : ''} title="ラストワン賞">
           ${locked ? '<span></span>' : `<button type="button" class="link danger" data-rm="${i}">削除</button>`}
         </div>`).join('')}
         ${locked ? '' : '<div class="toolbar2" style="margin:0"><button type="button" class="btn sm" id="addp">＋ 賞を追加</button><button type="button" class="btn sm" id="addpp">＋ 登録済みの商品から追加</button></div>'}
-        <p class="small">総口数 <b>${total}口</b>　賞品の参考価格合計 ${yen(value)}　売上見込み ${yen(total * (+$('#of').price.value || 0))}　<b>還元率（参考） ${total && +$('#of').price.value ? Math.round(value / (total * +$('#of').price.value) * 100) : 0}%</b></p>`;
+        <p class="small" id="przsum"></p>`;
+      sum();
       $$('#prz [data-k]').forEach(inp => inp.oninput = inp.onchange = () => {
         const p = prizes[+inp.closest('[data-i]').dataset.i];
         p[inp.dataset.k] = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : inp.value;
-        if (inp.type === 'checkbox' || inp.dataset.k === 'qty' || inp.dataset.k === 'value') draw();
+        if (inp.type === 'checkbox') draw(); else if (inp.dataset.k === 'qty' || inp.dataset.k === 'value') sum();
       });
       $$('#prz [data-rm]').forEach(b => b.onclick = () => { prizes.splice(+b.dataset.rm, 1); draw(); });
       $$('#prz [data-up]').forEach(inp => inp.onchange = async () => { try { toast('アップロード中…'); prizes[+inp.dataset.up].image_url = await uploadFile(inp.files[0]); draw(); } catch (e) { toast(e.message); } });
@@ -833,7 +841,7 @@
     drawImg();
     d.showModal();
     draw();
-    $('#of').price.oninput = draw;
+    $('#of').price.oninput = sum;
     $('#ocancel').onclick = () => d.close();
     $('#otest').onclick = () => testDraw($('#of').title.value || '（無題）', +$('#of').price.value || 0, prizes, false);
     const od = $('#odel'); if (od) od.onclick = () => deleteOripa(o, () => { d.close(); viewOripa(); });
