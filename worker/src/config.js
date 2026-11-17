@@ -79,6 +79,7 @@ export const DEFAULTS = {
     showRecent: true,     // 最近の当選を公開する
     showQty: false,       // 賞ごとの封入数・封入率を公開する
     showValue: false,     // 賞ごとの参考価格を公開する
+    boardReveal: 'card',  // ボード形式で開けられたパックの見せ方：card=中身（カード）を見せる / rank=何賞が当たったかだけ（パックが賞の色になる）
     maxPerOrder: 50,
     ageNotice: '18歳未満の方はご購入いただけません。',
     notice: '当選したカードは実物を発送します。ポイントや現金への交換はできません。封入内容は販売ページで公開しています。',
@@ -154,6 +155,7 @@ function finalize(c) {
   c.points.minUse = Math.max(1, c.points.minUse);
   if (!['shipped', 'paid'].includes(c.points.grantOn)) c.points.grantOn = 'shipped';
   c.oripa.maxPerOrder = Math.min(500, Math.max(1, c.oripa.maxPerOrder));
+  if (!['card', 'rank'].includes(c.oripa.boardReveal)) c.oripa.boardReveal = 'card';
   c.coin.expireMonths = Math.min(120, Math.max(0, c.coin.expireMonths));
   c.coin.shipFee = Math.max(0, c.coin.shipFee);
   c.coin.packs = (c.coin.packs || []).map(p => ({ price: int(p?.price), coins: int(p?.coins) }))

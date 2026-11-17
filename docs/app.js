@@ -484,7 +484,7 @@
       </div>
       ${pick ? `<div class="box boardbox" id="boardbox">
         <div class="row-between"><h3 style="margin:0">パックを選ぶ</h3><span class="small muted" id="bstat"></span></div>
-        <p class="small muted" style="margin:4px 0 10px">${o.open ? 'タップして選び、「開封する」で開けます。開けられたパックには中身が表示されます。' : '開封済みのパックの中身です。'}</p>
+        <p class="small muted" style="margin:4px 0 10px">${o.open ? `タップして選び、「開封する」で開けます。開けられたパックには${o.board.reveal === 'rank' ? '当たった賞が色で' : '中身が'}表示されます。` : `開封済みのパックの${o.board.reveal === 'rank' ? '賞' : '中身'}です。`}</p>
         <div class="board" id="board"></div></div>
         ${o.open && me ? `<div class="pickbar" id="pickbar" hidden><span><b id="pbn">0</b>個　<b id="pbc">0</b>${esc(config.coin.name)}</span><button class="btn" id="pbclear">選び直す</button><button class="btn primary" id="pbopen">開封する</button></div>` : ''}` : ''}
       ${importantHtml()}
@@ -565,9 +565,12 @@
       let html = '';
       for (let n = 1; n <= board.size; n++) {
         const x = opened.get(n);
-        html += x
-          ? `<div class="bt open fx-${x.fx || 0}" title="${n}番：${esc(x.rank)} ${esc(x.name)}">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" loading="lazy">` : ''}<span class="bt-r">${esc(x.rank)}</span><i>${n}</i></div>`
-          : `<button type="button" class="bt ${picked.has(n) ? 'on' : ''}" data-slot="${n}" ${o.open && me ? '' : 'disabled'} aria-pressed="${picked.has(n)}" aria-label="${n}番のパック"><i>${n}</i></button>`;
+        const logoTxt = esc(config.logoText || 'PK');
+        html += !x
+          ? `<button type="button" class="bt ${picked.has(n) ? 'on' : ''}" data-slot="${n}" ${o.open && me ? '' : 'disabled'} aria-pressed="${picked.has(n)}" aria-label="${n}番のパック"><span class="bt-pk"><span class="bt-logo">${logoTxt}</span></span><i>${n}</i></button>`
+          : board.reveal === 'rank' || !x.image_url
+            ? `<div class="bt open bt-rank fx-${x.fx || 0}" title="${n}番：${esc(x.is_last_one ? 'ラストワン賞' : x.rank)}"><span class="bt-pk"><b>${esc(x.rank || '')}</b></span><i>${n}</i></div>`
+            : `<div class="bt open bt-card fx-${x.fx || 0}" title="${n}番：${esc(x.rank)} ${esc(x.name)}"><img src="${esc(x.image_url)}" alt="" loading="lazy"><span class="bt-r">${esc(x.rank)}</span><i>${n}</i></div>`;
       }
       el.innerHTML = html;
       $('#bstat').textContent = `開封済み ${board.opened.length} / ${board.size}`;

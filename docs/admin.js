@@ -1070,6 +1070,7 @@
           <label class="check"><input type="checkbox" name="o_requireLogin" ${s.oripa.requireLogin ? 'checked' : ''}> オリパの購入に会員登録を必須にする</label>
           <label class="check"><input type="checkbox" name="o_showRecent" ${s.oripa.showRecent ? 'checked' : ''}> 販売ページに「最近の当選」を表示する</label>
           <label class="check"><input type="checkbox" name="o_showQty" ${s.oripa.showQty ? 'checked' : ''}> 販売ページに賞ごとの封入数・封入率を表示する</label>
+          <label>ボード形式で開けられたパックの見せ方<select name="o_boardReveal" style="width:100%"><option value="card" ${s.oripa.boardReveal !== 'rank' ? 'selected' : ''}>中身（当たったカード）を見せる</option><option value="rank" ${s.oripa.boardReveal === 'rank' ? 'selected' : ''}>何賞が当たったかだけ見せる（パックが賞の色になる）</option></select></label>
           <label class="check"><input type="checkbox" name="o_showValue" ${s.oripa.showValue ? 'checked' : ''}> 販売ページに賞ごとの参考価格を表示する</label>
           <p class="hint2">お客様には賞ごとの封入数と総残り口数だけを表示し、賞ごとの残り数は表示しません（この管理画面でのみ確認できます）。</p>
           ${inp('o_maxPerOrder', '1注文の上限口数（全オリパ共通の上限）', s.oripa.maxPerOrder, 'number')}
@@ -1118,7 +1119,7 @@
         points: { rate: g('p_rate'), signupBonus: g('p_signupBonus'), expireDays: g('p_expireDays'), minUse: g('p_minUse'), grantOn: g('p_grantOn'), oripaEarn: !!g('p_oripaEarn'), oripaUse: !!g('p_oripaUse') },
         phone: { forBonus: !!g('ph_forBonus'), forOripa: !!g('ph_forOripa') },
         coin: { name: g('c_name'), expireMonths: g('c_expireMonths'), shipFee: g('c_shipFee'), packs: $$('#packs .r').map(r => ({ price: $('[data-pp]', r).value, coins: $('[data-pc]', r).value })).filter(p => p.price && p.coins) },
-        oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), showQty: !!g('o_showQty'), showValue: !!g('o_showValue'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), important: g('o_important'), ageNotice: g('o_ageNotice') },
+        oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), showQty: !!g('o_showQty'), showValue: !!g('o_showValue'), boardReveal: g('o_boardReveal'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), important: g('o_important'), ageNotice: g('o_ageNotice') },
         categories: $$('#cats .r').map(r => ({ key: $('[data-ck]', r).value, label: $('[data-cl]', r).value })).filter(c => c.key && c.label),
         condGuide: $$('#conds .r').map(r => [$('[data-gk]', r).value, $('[data-gv]', r).value]).filter(x => x[0]),
         legal: { seller: g('l_seller'), manager: g('l_manager'), address: g('l_address'), phone: g('l_phone'), hours: g('l_hours'), email: g('l_email'), delivery: g('l_delivery'), returns: g('l_returns'), extra: g('l_extra') },

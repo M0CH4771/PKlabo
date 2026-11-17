@@ -69,7 +69,12 @@ export async function boardOf(env, o) {
       WHERE d.oripa_id = ? AND d.slot IS NOT NULL ORDER BY d.slot`
   ).bind(o.id).all();
   const tiers = await prizeTiers(env, [o.id]);
-  return { size: o.total, opened: results.map(({ prize_id, ...r }) => ({ ...r, fx: tiers.get(prize_id) || 0 })) };
+  // 「何賞が当たったかだけ」の設定なら、賞品名と画像は送らない
+  const rankOnly = cfg(env).oripa.boardReveal === 'rank';
+  return {
+    size: o.total, reveal: rankOnly ? 'rank' : 'card',
+    opened: results.map(({ prize_id, name, image_url, ...r }) => ({ ...r, ...(rankOnly ? {} : { name, image_url }), fx: tiers.get(prize_id) || 0 })),
+  };
 }
 
 // 注文用：オリパの価格チェック
