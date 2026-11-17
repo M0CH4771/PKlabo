@@ -492,7 +492,7 @@
           <div class="small">${unitPrice(o.price)}/口　販売 ${o.sold} / ${o.total}口　売上 ${yen(o.sold * o.price)}</div>
           <div class="obar" style="margin:6px 0"><i style="width:${o.total ? Math.round((o.total - o.sold) / o.total * 100) : 0}%"></i></div>
           <div class="small muted">${o.prizes.map(p => `${esc(p.is_last_one ? 'ラストワン' : p.rank)} ${esc(p.name)} ${p.remaining}/${p.qty}`).join('<br>')}</div>
-          <div class="toolbar2" style="margin:8px 0 0"><button class="btn sm" data-eo="${o.id}">編集</button><button class="btn sm" data-dr="${o.id}">当選履歴</button>
+          <div class="toolbar2" style="margin:8px 0 0"><button class="btn sm" data-eo="${o.id}">編集</button><button class="btn sm" data-dr="${o.id}">当選履歴</button><button class="btn sm" data-test="${o.id}">試し引き</button>
           ${o.status !== 'ended' && o.sold ? `<button class="btn sm" data-end="${o.id}">販売終了</button>` : ''}</div></div>`;
       }).join('') || '<p class="muted pad">まだオリパはありません</p>'}</div>`;
     $('#newo').onclick = () => editOripa(null);
@@ -516,6 +516,7 @@
       const o = list.find(x => x.id === +b.dataset.end);
       try { await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify({ ...o, starts_at: o.starts_at ? new Date(o.starts_at.replace(' ', 'T') + 'Z').toISOString() : '', ends_at: o.ends_at ? new Date(o.ends_at.replace(' ', 'T') + 'Z').toISOString() : '', status: 'ended' }) }); viewOripa(); } catch (e) { toast(e.message); }
     });
+    $$('[data-test]').forEach(b => b.onclick = () => { const o = list.find(x => x.id === +b.dataset.test); testDraw(o.title, o.price, o.prizes, true); });
     $$('[data-dr]').forEach(b => b.onclick = async () => {
       const rows = await api(`/api/admin/oripas/${b.dataset.dr}/draws`);
       const d = $('#dlg');
@@ -689,6 +690,60 @@
     };
   }
 
+  // 試し引き：画面の中だけで抽選する（在庫・売上・お客様には一切影響しない）
+  function testDraw(title, price, srcPrizes, useRemaining) {
+    const fresh = () => srcPrizes.filter(p => p.name).map(p => ({ ...p, left: p.is_last_one ? 1 : Math.max(0, +(useRemaining ? p.remaining : p.qty) || 0) }));
+    let pile = fresh(), drawn = [], spent = 0;
+    const td = document.createElement('dialog');
+    td.className = 'ed picker';
+    document.body.appendChild(td);
+    const rnd = n => { const u = new Uint32Array(1); crypto.getRandomValues(u); return u[0] % n; };
+    const poolLeft = () => pile.filter(p => !p.is_last_one).reduce((s, p) => s + p.left, 0);
+    const draw1 = () => {
+      const pool = pile.filter(p => !p.is_last_one && p.left > 0);
+      let r = rnd(pool.reduce((s, p) => s + p.left, 0));
+      const hit = pool.find(p => (r -= p.left) < 0);
+      hit.left--; spent += price;
+      const out = [hit];
+      const lo = pile.find(p => p.is_last_one && p.left > 0);
+      if (lo && poolLeft() === 0) { lo.left = 0; out.push(lo); }
+      return out;
+    };
+    const card = (p, i) => `<div class="dcard ${p.is_last_one ? 'lo' : ''}" style="--i:${i}"><div class="dc-in"><div class="dc-back">${esc(settings?.logoText || 'PK')}</div>
+      <div class="dc-front">${p.image_url ? `<img src="${esc(p.image_url)}" alt="">` : '<div class="noimg sm"></div>'}<span class="tag rank ${p.is_last_one ? 'lo' : ''}">${esc(p.is_last_one ? 'ラストワン' : p.rank)}</span><b>${esc(p.name)}</b></div></div></div>`;
+    const render = (latest = []) => {
+      const left = poolLeft();
+      const value = drawn.reduce((s, p) => s + (+p.value || 0), 0);
+      const by = {}; drawn.forEach(p => { const k = p.is_last_one ? 'ラストワン' : (p.rank || p.name); by[k] = (by[k] || 0) + 1; });
+      td.innerHTML = `<form method="dialog" class="form">
+        <div class="row-between"><h2 style="margin:0">試し引き：${esc(title)}</h2><span class="pill">テスト</span></div>
+        <p class="hint2" style="margin:0">この画面の中だけで抽選します。在庫・売上・当選履歴・お客様には一切影響しません。${useRemaining ? '今の残り口数から引きます。' : '保存前の封入内容で引きます。'}</p>
+        <div class="toolbar2" style="margin:0">
+          ${[1, 10].map(n => `<button type="button" class="btn ${n === 1 ? '' : 'primary'}" data-n="${n}" ${left ? '' : 'disabled'}>${n}回引く</button>`).join('')}
+          <button type="button" class="btn" data-n="all" ${left ? '' : 'disabled'}>残り全部（${left}口）</button>
+          <button type="button" class="btn" id="treset">最初から</button>
+          <span class="small muted" style="margin-left:auto">残り ${left}口</span>
+        </div>
+        ${latest.length ? `<div class="draws opening" id="tdraws">${latest.slice(0, 30).map(card).join('')}</div>${latest.length > 30 ? `<p class="small muted">ほか${latest.length - 30}枚</p>` : ''}` : ''}
+        ${drawn.length ? `<div class="stats" style="margin:0"><div class="stat"><span class="sub2">引いた回数</span><b>${drawn.filter(p => !p.is_last_one).length}回</b></div><div class="stat"><span class="sub2">支払った額</span><b>${unitPrice(spent)}</b></div><div class="stat"><span class="sub2">当たった額（参考価格）</span><b>${yen(value)}</b></div><div class="stat"><span class="sub2">還元率</span><b>${spent ? Math.round(value / spent * 100) : 0}%</b></div></div>
+          <p class="small">${Object.entries(by).map(([k, n]) => `${esc(k)} ${n}枚`).join('　')}</p>` : '<p class="small muted">ボタンを押すと、お客様の画面と同じ確率で抽選します。</p>'}
+        <div class="row-between"><span></span><button type="button" class="btn" id="tclose">閉じる</button></div>
+      </form>`;
+      $$('[data-n]', td).forEach(b => b.onclick = () => {
+        const n = b.dataset.n === 'all' ? poolLeft() : Math.min(+b.dataset.n, poolLeft());
+        const got = []; for (let i = 0; i < n; i++) got.push(...draw1());
+        drawn.push(...got); render(got);
+      });
+      $('#treset', td).onclick = () => { pile = fresh(); drawn = []; spent = 0; render(); };
+      $('#tclose', td).onclick = () => { td.close(); td.remove(); };
+      requestAnimationFrame(() => setTimeout(() => $$('#tdraws .dcard', td).forEach(c => c.classList.add('flip')), 60));
+    };
+    if (!poolLeft()) { toast('封入数が0です'); td.remove(); return; }
+    td.addEventListener('cancel', () => td.remove());
+    render();
+    td.showModal();
+  }
+
   function editOripa(o) {
     const d = $('#dlg');
     const v = o || { title: '', price: 1000, status: 'draft', max_per_order: 10, prizes: [{ rank: 'S賞', name: '', qty: 1, value: 0 }, { rank: 'A賞', name: '', qty: 3, value: 0 }, { rank: 'C賞', name: '', qty: 20, value: 0 }] };
@@ -749,7 +804,7 @@
         <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
         <div class="fs" style="background:var(--bg)"><h3>封入内容</h3><p class="hint2">ハズレ枠も「C賞 ノーマル5枚」のように賞品として登録してください（総口数＝封入数の合計）。LO＝ラストワン賞（最後の1口を引いた人に追加でプレゼント）。</p><div class="rows" id="prz"></div></div>
         <div class="row-between"><span>${o && !o.sold ? '<button type="button" class="link danger" id="odel">削除</button>' : ''}</span>
-          <div style="display:flex;gap:8px"><button type="button" class="btn" id="ocancel">閉じる</button><button class="btn primary">保存</button></div></div>
+          <div style="display:flex;gap:8px"><button type="button" class="btn" id="otest">試し引き</button><button type="button" class="btn" id="ocancel">閉じる</button><button class="btn primary">保存</button></div></div>
       </form>`;
     const drawImg = () => {
       $('#oimg').innerHTML = (image ? `<div class="im" style="width:160px"><img src="${esc(image)}" style="width:160px;aspect-ratio:16/9" alt=""><button type="button" id="irm">×</button></div>` : '') + `<label class="upl" style="width:160px;aspect-ratio:16/9">＋画像<input type="file" accept="image/*" id="oup"></label>`;
@@ -761,6 +816,7 @@
     draw();
     $('#of').price.oninput = draw;
     $('#ocancel').onclick = () => d.close();
+    $('#otest').onclick = () => testDraw($('#of').title.value || '（無題）', +$('#of').price.value || 0, prizes, false);
     const od = $('#odel'); if (od) od.onclick = async () => { if (!confirm('削除しますか？')) return; try { await api(`/api/admin/oripas/${o.id}`, { method: 'DELETE' }); d.close(); viewOripa(); } catch (e) { toast(e.message); } };
     $('#of').onsubmit = async e => {
       e.preventDefault();
