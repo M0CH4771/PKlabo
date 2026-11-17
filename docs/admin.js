@@ -485,17 +485,31 @@
     shell('<p class="muted">読み込み中…</p>');
     const list = await api('/api/admin/oripas');
     $('#body').innerHTML = `
-      <div class="toolbar2"><button class="btn primary sm" id="newo">＋ オリパを作成</button><span class="muted small">販売開始後は封入内容（賞品・数）を変更できません（公平性のため）。</span></div>
+      <div class="toolbar2"><button class="btn primary sm" id="newo">＋ オリパを作成</button><button class="btn sm" id="ocsv">CSVで作成・更新</button><button class="btn sm" id="oexp" ${list.length ? '' : 'disabled'}>CSVに書き出す</button><span class="muted small">販売開始後は封入内容（賞品・数）を変更できません（公平性のため）。</span></div>
       <div class="ogrid">${list.map(o => {
         const st = { draft: '下書き', live: '販売中', ended: '終了' }[o.status];
         return `<div class="panel"><div class="row-between"><b>${esc(o.title)}</b><span class="pill">${st}</span></div>
-          <div class="small">${yen(o.price)}/口　販売 ${o.sold} / ${o.total}口　売上 ${yen(o.sold * o.price)}</div>
+          <div class="small">${unitPrice(o.price)}/口　販売 ${o.sold} / ${o.total}口　売上 ${yen(o.sold * o.price)}</div>
           <div class="obar" style="margin:6px 0"><i style="width:${o.total ? Math.round((o.total - o.sold) / o.total * 100) : 0}%"></i></div>
           <div class="small muted">${o.prizes.map(p => `${esc(p.is_last_one ? 'ラストワン' : p.rank)} ${esc(p.name)} ${p.remaining}/${p.qty}`).join('<br>')}</div>
           <div class="toolbar2" style="margin:8px 0 0"><button class="btn sm" data-eo="${o.id}">編集</button><button class="btn sm" data-dr="${o.id}">当選履歴</button>
           ${o.status !== 'ended' && o.sold ? `<button class="btn sm" data-end="${o.id}">販売終了</button>` : ''}</div></div>`;
       }).join('') || '<p class="muted pad">まだオリパはありません</p>'}</div>`;
     $('#newo').onclick = () => editOripa(null);
+    $('#ocsv').onclick = () => importOripaCsv();
+    $('#oexp').onclick = () => download(`oripa_${today()}.csv`, [ORIPA_COLS.map(c => c[1]), ...list.flatMap(o => o.prizes.map((p, i) => ORIPA_COLS.map(([k]) => {
+      if (k === 'oripa_id') return o.id;
+      if (k === 'title') return o.title;
+      if (i > 0 && ['price', 'status', 'max_per_order', 'banner', 'description'].includes(k)) return '';
+      if (k === 'price') return o.price;
+      if (k === 'status') return { draft: '下書き', live: '販売中', ended: '終了' }[o.status];
+      if (k === 'max_per_order') return o.max_per_order;
+      if (k === 'banner') return o.image_url;
+      if (k === 'description') return o.description;
+      if (k === 'is_last_one') return p.is_last_one ? '○' : '';
+      if (['product_id', 'card_no', 'condition'].includes(k)) return '';
+      return p[k];
+    })))]);
     $$('[data-eo]').forEach(b => b.onclick = () => editOripa(list.find(o => o.id === +b.dataset.eo)));
     $$('[data-end]').forEach(b => b.onclick = async () => {
       if (!confirm('販売を終了しますか？（残りの口は販売されなくなります）')) return;
@@ -507,10 +521,172 @@
       const d = $('#dlg');
       d.innerHTML = `<form method="dialog" class="form"><h2 style="margin:0">当選履歴（${rows.length}件）</h2><div class="overflow" style="max-height:60vh"><table class="t">
         <tr><th>日時</th><th>注文</th><th>お客様</th><th>賞</th><th>状況</th></tr>
-        ${rows.map(r => `<tr><td class="small">${jst(r.created_at)}</td><td class="mono small">${esc(r.order_no)}</td><td class="small">${esc(r.customer)}</td><td class="small">${esc(r.is_last_one ? 'ラストワン' : r.rank)} ${esc(r.name)}</td><td class="small">${esc(STATUS[r.status])}${r.revealed_at ? '・開封済' : ''}</td></tr>`).join('')}</table></div>
+        ${rows.map(r => `<tr><td class="small">${jst(r.created_at)}</td><td class="mono small">${esc(r.order_no || '—')}</td><td class="small">${esc(r.customer)}</td><td class="small">${esc(r.is_last_one ? 'ラストワン' : r.rank)} ${esc(r.name)}</td><td class="small">${!r.order_no ? '獲得カードBOXに保管中' : r.kind === 'ship' ? `発送依頼・${esc(STATUS[r.status])}` : `${esc(STATUS[r.status])}${r.revealed_at ? '・開封済' : ''}`}</td></tr>`).join('')}</table></div>
         <button class="btn">閉じる</button></form>`;
       d.showModal();
     });
+  }
+
+
+  const unitPrice = n => settings?.features?.coins ? `${Number(n).toLocaleString()}${esc(settings.coin.name)}` : yen(n);
+  const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['banner', 'バナー画像URL'], ['description', '説明'],
+    ['rank', 'ランク'], ['name', '賞品名'], ['qty', '封入数'], ['value', '参考価格'], ['image_url', '賞品画像URL'], ['is_last_one', 'ラストワン'], ['product_id', '商品ID'], ['card_no', '型番'], ['condition', '商品の状態']];
+  const ORIPA_ALIAS = Object.fromEntries([...ORIPA_COLS.map(([k, l]) => [l, k]), ...ORIPA_COLS.map(([k]) => [k, k]),
+    ['タイトル', 'title'], ['価格', 'price'], ['賞', 'rank'], ['枚数', 'qty'], ['口数', 'qty'], ['画像URL', 'image_url'], ['LO', 'is_last_one'], ['状態（商品）', 'condition']]);
+
+  // 登録済みの商品から賞品の中身を作る
+  const prizeFromProduct = x => ({
+    name: [x.name, x.rarity, x.card_no].filter(Boolean).join(' ') + (x.condition ? `（${x.condition}）` : ''),
+    image_url: x.image_url || (x.images || [])[0] || '', value: x.price, product_id: x.id,
+  });
+  function findProduct(r) {
+    if (r.product_id) return productsCache.find(p => p.id === +r.product_id) || null;
+    if (!r.card_no) return null;
+    const hits = productsCache.filter(p => norm(p.card_no) === norm(r.card_no) && (!r.condition || norm(p.condition) === norm(r.condition)));
+    return hits.length === 1 ? hits[0] : hits.find(p => p.stock > 0) || hits[0] || null;
+  }
+
+  // 商品を選ぶ小窓（multi=true で複数選択）
+  async function pickProducts(multi) {
+    if (!productsCache.length) await loadProducts();
+    return new Promise(resolve => {
+      const pd = document.createElement('dialog');
+      pd.className = "ed picker";
+      const picked = new Set();
+      pd.innerHTML = `<form method="dialog" class="form">
+        <div class="row-between"><h2 style="margin:0">商品から選ぶ</h2><span class="small muted">名前・型番・状態で検索</span></div>
+        <input type="search" id="pq" placeholder="例：リザードン 201/165 PSA10" autocomplete="off">
+        <div class="overflow" style="max-height:55vh"><table class="t" id="pl"></table></div>
+        <p class="hint2" style="margin:0">賞品名・画像・参考価格（＝販売価格）が入ります。あとから書き換えられます。オリパに入れたカードの在庫は自動では減らないので、通常販売と重ならないよう在庫を調整してください。</p>
+        <div class="row-between"><span class="small" id="pc"></span><div style="display:flex;gap:8px"><button type="button" class="btn" id="pcancel">閉じる</button>${multi ? '<button type="button" class="btn primary" id="pok">追加する</button>' : ''}</div></div>
+      </form>`;
+      document.body.appendChild(pd);
+      const done = v => { pd.close(); pd.remove(); resolve(v); };
+      const list = () => {
+        const qs = norm($('#pq', pd).value) ? $('#pq', pd).value.trim().split(/\s+/).map(norm).filter(Boolean) : [];
+        const hit = productsCache.filter(p => { const t = norm(`${p.name} ${p.card_no} ${p.condition} ${p.rarity} ${p.set_name}`); return qs.every(w => t.includes(w)); })
+          .sort((x, y) => (y.stock > 0) - (x.stock > 0) || y.price - x.price).slice(0, 80);
+        $('#pl', pd).innerHTML = hit.map(p => `<tr data-id="${p.id}" style="cursor:pointer">
+          ${multi ? `<td><input type="checkbox" ${picked.has(p.id) ? 'checked' : ''}></td>` : ''}
+          <td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:36px;height:50px;object-fit:cover;border-radius:4px">` : ''}</td>
+          <td><b>${esc(p.name)}</b> <span class="muted small">${esc(p.card_no)} ${esc(p.rarity)}</span></td><td><span class="pill">${esc(p.condition)}</span></td>
+          <td class="num">${yen(p.price)}</td><td class="num small ${p.stock ? '' : 'muted'}">在庫${p.stock}</td></tr>`).join('') || '<tr><td class="muted">見つかりません</td></tr>';
+        $$('#pl tr[data-id]', pd).forEach(tr => tr.onclick = e => {
+          const p = productsCache.find(x => x.id === +tr.dataset.id);
+          if (!multi) return done([p]);
+          picked.has(p.id) ? picked.delete(p.id) : picked.add(p.id);
+          const cb = $('input', tr); if (e.target !== cb) cb.checked = picked.has(p.id);
+          $('#pc', pd).textContent = picked.size ? `${picked.size}件を選択中` : '';
+        });
+      };
+      $('#pq', pd).oninput = list;
+      $('#pcancel', pd).onclick = () => done([]);
+      pd.addEventListener('cancel', e => { e.preventDefault(); done([]); });
+      const ok = $('#pok', pd); if (ok) ok.onclick = () => done(productsCache.filter(p => picked.has(p.id)));
+      list();
+      pd.showModal();
+      $('#pq', pd).focus();
+    });
+  }
+
+  // オリパを CSV でまとめて作成・更新（1行＝1つの賞。オリパ名が同じ行（または空欄の行）は同じオリパ）
+  async function importOripaCsv() {
+    if (!productsCache.length) await loadProducts();
+    const d = $('#dlg');
+    d.innerHTML = `<form method="dialog" class="form" id="ocf">
+      <h2 style="margin:0">オリパをCSVで作成・更新</h2>
+      <p class="hint2" style="margin:0">1行に1つの賞を書きます。<b>オリパ名</b>が同じ行（またはオリパ名が空欄の行）は前の行と同じオリパの賞になります。価格・状態などのオリパの項目は、各オリパの最初の行だけ書けばOKです。<br>
+      <b>商品ID</b>か<b>型番（＋商品の状態）</b>を書くと、登録済みの商品から賞品名・画像・参考価格を自動で入れます（書いた欄はそのまま優先）。<br>
+      <b>オリパID</b>がある行は既存のオリパを更新します（販売が始まったものは封入内容を変えられません）。空欄なら新しく作ります。状態が空欄なら「下書き」です。</p>
+      <div class="toolbar2" style="margin:0"><button type="button" class="btn sm" id="otpl">テンプレート（記入例つき）</button><input type="file" id="ofile" accept=".csv,.tsv,.txt,text/csv"></div>
+      <textarea id="ocsvt" rows="8" placeholder="オリパ名,1口の価格,状態,ランク,賞品名,封入数,参考価格,商品ID,型番,商品の状態"></textarea>
+      <button type="button" class="btn" id="opv">プレビュー</button>
+      <div id="opvr"></div>
+      <div class="row-between"><span></span><button type="button" class="btn" id="oclose">閉じる</button></div>
+    </form>`;
+    d.showModal();
+    $('#oclose').onclick = () => { d.close(); viewOripa(); };
+    $('#otpl').onclick = () => {
+      const pick = productsCache.find(p => p.card_no) || {};
+      download('oripa_template.csv', [ORIPA_COLS.map(c => c[1]),
+        ['', 'SAR確定！1000円オリパ', 1000, '下書き', 10, '', '1口でSAR以上確定', 'S賞', 'メガリザードンXex MUR', 1, 79800, '', '', '', '', ''],
+        ['', '', '', '', '', '', '', 'A賞', '', 2, '', '', '', pick.id || '', '', ''],
+        ['', '', '', '', '', '', '', 'B賞', '', 3, '', '', '', '', pick.card_no || '201/165', pick.condition || 'A'],
+        ['', '', '', '', '', '', '', 'C賞', 'SAR 1枚', 94, 1200, '', '', '', '', ''],
+        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']]);
+    };
+    $('#ofile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const buf = await f.arrayBuffer();
+      let text = new TextDecoder('utf-8').decode(buf);
+      if (text.includes('�')) text = new TextDecoder('shift_jis').decode(buf);
+      $('#ocsvt').value = text;
+    };
+    $('#opv').onclick = () => {
+      const rows = parseCSV($('#ocsvt').value);
+      if (rows.length < 2) { toast('データがありません'); return; }
+      const head = rows[0].map(h => ORIPA_ALIAS[h.trim()] || '');
+      const unknown = rows[0].filter((h, i) => !head[i]);
+      const groups = []; const warn = [];
+      rows.slice(1).forEach((r, n) => {
+        const o = {}; head.forEach((h, i) => { if (h) o[h] = (r[i] ?? '').trim(); });
+        const line = n + 2;
+        let g = groups[groups.length - 1];
+        const newGroup = (o.title && (!g || g.title !== o.title)) || (o.oripa_id && (!g || String(g.id || '') !== o.oripa_id));
+        if (newGroup || !g) { g = { title: o.title || '', id: o.oripa_id ? +o.oripa_id : null, line, prizes: [] }; groups.push(g); }
+        for (const [k, kk] of [['price', 'price'], ['max_per_order', 'max_per_order'], ['banner', 'image_url'], ['description', 'description']]) if (o[k] && g[kk] === undefined) g[kk] = o[k];
+        if (o.status && !g.status) g.status = /販売|live|公開/i.test(o.status) ? 'live' : /終了|ended/i.test(o.status) ? 'ended' : 'draft';
+        if (!o.name && !o.product_id && !o.card_no && !o.qty) return; // 賞のない行（オリパの項目だけ）
+        const prod = (o.product_id || o.card_no) ? findProduct(o) : null;
+        if ((o.product_id || o.card_no) && !prod) warn.push(`${line}行目：商品が見つかりません（${esc(o.product_id ? 'ID ' + o.product_id : o.card_no + ' ' + (o.condition || ''))}）`);
+        const base = prod ? prizeFromProduct(prod) : {};
+        const lo = /^(1|true|○|〇|はい|yes|lo)$/i.test(o.is_last_one || '') || /ラストワン|last/i.test(o.rank || '');
+        g.prizes.push({
+          rank: o.rank || '', name: o.name || base.name || '', image_url: o.image_url || base.image_url || '',
+          qty: lo ? 1 : (o.qty === '' || o.qty === undefined ? 1 : +o.qty), value: o.value !== '' && o.value !== undefined ? +o.value : (base.value || 0), is_last_one: lo ? 1 : 0, sort: g.prizes.length, line,
+        });
+      });
+      groups.forEach(g => {
+        if (!g.title && !g.id) warn.push(`${g.line}行目：オリパ名がありません`);
+        if (!g.id && !(+g.price > 0)) warn.push(`「${esc(g.title)}」：1口の価格がありません`);
+        g.prizes.filter(p => !p.name).forEach(p => warn.push(`${p.line}行目：賞品名がありません`));
+        if (g.prizes.filter(p => p.is_last_one).length > 1) warn.push(`「${esc(g.title)}」：ラストワン賞は1つまでです`);
+        if (g.prizes.length > 40) warn.push(`「${esc(g.title)}」：賞は1つのオリパにつき40行までです`);
+      });
+      const ok = !warn.length;
+      $('#opvr').innerHTML = `
+        ${unknown.length ? `<p class="small danger">読み込まない列：${esc(unknown.join(', '))}</p>` : ''}
+        ${groups.map(g => {
+          const pool = g.prizes.filter(p => !p.is_last_one);
+          const total = pool.reduce((s, p) => s + p.qty, 0), value = pool.reduce((s, p) => s + p.qty * p.value, 0);
+          return `<div class="panel" style="margin:6px 0"><div class="row-between"><b>${esc(g.title || `ID ${g.id}`)}</b><span class="pill">${g.id ? `ID ${g.id} を更新` : '新規'}・${{ draft: '下書き', live: '販売中', ended: '終了' }[g.status || 'draft']}</span></div>
+            <div class="small">${g.price ? unitPrice(g.price) + '/口　' : ''}総口数 ${total}口　還元率（参考） ${total && g.price ? Math.round(value / (total * g.price) * 100) : '—'}%</div>
+            <table class="t">${g.prizes.map(p => `<tr><td class="small">${esc(p.is_last_one ? 'ラストワン' : p.rank)}</td><td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:28px;height:39px;object-fit:cover;border-radius:3px">` : ''}</td><td class="small">${esc(p.name) || '<span class="danger">（なし）</span>'}</td><td class="num small">${p.qty}枚</td><td class="num small">${yen(p.value)}</td></tr>`).join('')}</table></div>`;
+        }).join('')}
+        ${warn.length ? `<p class="small danger">${warn.slice(0, 30).join('<br>')}</p>` : ''}
+        <button type="button" class="btn primary" id="ogo" ${ok ? '' : 'disabled'}>${groups.length}件のオリパを保存</button><div id="ores" class="small"></div>`;
+      const go = $('#ogo');
+      if (go) go.onclick = async () => {
+        go.disabled = true;
+        const res = [];
+        for (const g of groups) {
+          let cur = null;
+          let body = { title: g.title, price: g.price, status: g.status || 'draft', max_per_order: g.max_per_order || 10, image_url: g.image_url || '', description: g.description || '', prizes: g.prizes };
+          if (g.id) {
+            cur = (await api('/api/admin/oripas')).find(o => o.id === g.id);
+            if (!cur) { res.push(`ID ${g.id}：見つかりません`); continue; }
+            body = { ...cur, ...Object.fromEntries(Object.entries(body).filter(([k, v]) => v !== '' && v !== undefined && !(k === 'status' && !g.status) && !(k === 'max_per_order' && !g.max_per_order))), id: g.id,
+              starts_at: cur.starts_at ? new Date(cur.starts_at.replace(' ', 'T') + 'Z').toISOString() : '', ends_at: cur.ends_at ? new Date(cur.ends_at.replace(' ', 'T') + 'Z').toISOString() : '' };
+            // 販売開始後は既存の賞のIDを引き継いで名前・画像・参考価格だけ更新
+            if (cur.sold > 0) body.prizes = g.prizes.map((p, i) => ({ ...p, id: cur.prizes.filter(x => x.is_last_one === p.is_last_one)[g.prizes.filter((q, j) => j < i && q.is_last_one === p.is_last_one).length]?.id }));
+          }
+          try { const r = await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify(body) }); res.push(`「${esc(g.title || cur?.title || g.id)}」：保存しました${r.note ? `（${esc(r.note)}）` : ''}`); }
+          catch (e) { res.push(`<span class="danger">「${esc(g.title || g.id)}」：${esc(e.message)}</span>`); }
+        }
+        $('#ores').innerHTML = res.join('<br>');
+        toast('読み込みました');
+      };
+    };
   }
 
   function editOripa(o) {
@@ -527,14 +703,14 @@
         <div class="r p6 small muted"><span>ランク</span><span>賞品名</span><span>画像URL</span><span>封入数</span><span>参考価格</span><span>LO</span><span></span></div>
         ${prizes.map((p, i) => `<div class="r p6" data-i="${i}">
           <input data-k="rank" value="${esc(p.rank)}" placeholder="S賞">
-          <input data-k="name" value="${esc(p.name)}" placeholder="賞品名">
+          <span style="display:flex;gap:4px"><input data-k="name" value="${esc(p.name)}" placeholder="賞品名"><button type="button" class="btn sm" style="flex:none" data-pick="${i}" title="登録済みの商品から選ぶ">商品</button></span>
           <span style="display:flex;gap:4px"><input data-k="image_url" value="${esc(p.image_url)}" placeholder="https://"><label class="btn sm" style="flex:none">📷<input type="file" accept="image/*" data-up="${i}" hidden></label></span>
           <input data-k="qty" type="number" min="0" value="${p.is_last_one ? 1 : esc(p.qty)}" ${locked || p.is_last_one ? 'disabled' : ''}>
           <input data-k="value" type="number" min="0" value="${esc(p.value)}">
           <input data-k="is_last_one" type="checkbox" ${p.is_last_one ? 'checked' : ''} ${locked ? 'disabled' : ''} title="ラストワン賞">
           ${locked ? '<span></span>' : `<button type="button" class="link danger" data-rm="${i}">削除</button>`}
         </div>`).join('')}
-        ${locked ? '' : '<button type="button" class="btn sm" id="addp">＋ 賞を追加</button>'}
+        ${locked ? '' : '<div class="toolbar2" style="margin:0"><button type="button" class="btn sm" id="addp">＋ 賞を追加</button><button type="button" class="btn sm" id="addpp">＋ 登録済みの商品から追加</button></div>'}
         <p class="small">総口数 <b>${total}口</b>　賞品の参考価格合計 ${yen(value)}　売上見込み ${yen(total * (+$('#of').price.value || 0))}　<b>還元率（参考） ${total && +$('#of').price.value ? Math.round(value / (total * +$('#of').price.value) * 100) : 0}%</b></p>`;
       $$('#prz [data-k]').forEach(inp => inp.oninput = inp.onchange = () => {
         const p = prizes[+inp.closest('[data-i]').dataset.i];
@@ -544,6 +720,17 @@
       $$('#prz [data-rm]').forEach(b => b.onclick = () => { prizes.splice(+b.dataset.rm, 1); draw(); });
       $$('#prz [data-up]').forEach(inp => inp.onchange = async () => { try { toast('アップロード中…'); prizes[+inp.dataset.up].image_url = await uploadFile(inp.files[0]); draw(); } catch (e) { toast(e.message); } });
       const ap = $('#addp'); if (ap) ap.onclick = () => { prizes.push({ rank: '', name: '', qty: 1, value: 0 }); draw(); };
+      const app2 = $('#addpp'); if (app2) app2.onclick = async () => {
+        const sel = await pickProducts(true);
+        sel.forEach(x => prizes.push({ rank: '', qty: 1, ...prizeFromProduct(x) }));
+        if (sel.length) draw();
+      };
+      $$('#prz [data-pick]').forEach(b => b.onclick = async () => {
+        const [x] = await pickProducts(false);
+        if (!x) return;
+        Object.assign(prizes[+b.dataset.pick], prizeFromProduct(x));
+        draw();
+      });
     };
     d.innerHTML = `
       <form method="dialog" class="form" id="of">
@@ -551,7 +738,7 @@
         ${locked ? '<p class="small danger">販売が始まっているため、賞品の追加・削除・封入数・価格は変更できません。</p>' : ''}
         <label>タイトル *<input name="title" required value="${esc(v.title)}" placeholder="SAR確定！1000円オリパ"></label>
         <div class="grid3">
-          <label>1口の価格 *<input name="price" type="number" min="1" required value="${esc(v.price)}" ${locked ? 'disabled' : ''}></label>
+          <label>1口の価格${settings?.features?.coins ? `（${esc(settings.coin.name)}）` : ''} *<input name="price" type="number" min="1" required value="${esc(v.price)}" ${locked ? 'disabled' : ''}></label>
           <label>1注文の上限口数<input name="max_per_order" type="number" min="1" value="${esc(v.max_per_order)}"></label>
           <label>状態<select name="status" style="width:100%"><option value="draft" ${v.status === 'draft' ? 'selected' : ''}>下書き（非公開）</option><option value="live" ${v.status === 'live' ? 'selected' : ''}>販売中</option><option value="ended" ${v.status === 'ended' ? 'selected' : ''}>終了</option></select></label>
           <label>販売開始（任意）<input name="starts_at" type="datetime-local" value="${toLocalInput(v.starts_at)}"></label>

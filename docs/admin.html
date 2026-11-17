@@ -66,7 +66,9 @@
   .feat label span { font-weight: 400; color: var(--muted); font-size: 12px; display: block; }
   .rows { display: grid; gap: 6px; }
   .rows .r { display: grid; gap: 6px; grid-template-columns: 1fr 2fr auto; align-items: center; }
-  .rows .r.p6 { grid-template-columns: 70px 1.2fr 2fr 70px 90px 70px auto; }
+  .rows .r.p6 { grid-template-columns: 70px 1.6fr 1.6fr 70px 90px 40px auto; }
+  dialog.ed.picker { width: min(760px, 94vw); }
+  dialog.picker tr[data-id]:hover { background: var(--bg); }
   .rows .r input { padding: 7px 9px; font-size: 14px; }
   .savebar { position: sticky; bottom: 0; background: rgba(244,244,247,.95); padding: 10px 0; display: flex; gap: 10px; justify-content: flex-end; }
   .envs { display: flex; flex-wrap: wrap; gap: 6px; }

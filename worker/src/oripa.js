@@ -198,6 +198,7 @@ export async function adminOripaRoutes(req, env, path) {
     const total = prizes.filter(p => !p.is_last_one).reduce((s, p) => s + p.qty, 0);
     if (meta.status === 'live' && total <= 0) throw new HttpError(400, '賞品（封入数）を登録してから公開してください');
     if (prizes.filter(p => p.is_last_one).length > 1) throw new HttpError(400, 'ラストワン賞は1つまでです');
+    if (prizes.length > 40) throw new HttpError(400, '賞は1つのオリパにつき40種類までです');
 
     if (!id) {
       const r = await env.DB.prepare(
@@ -250,8 +251,9 @@ export async function adminOripaRoutes(req, env, path) {
   mm = path.match(/^\/api\/admin\/oripas\/(\d+)\/draws$/);
   if (mm && m === 'GET') {
     const { results } = await env.DB.prepare(
-      `SELECT d.id, d.is_last_one, d.created_at, d.revealed_at, p.rank, p.name, p.value, o.order_no, o.status, o.name AS customer
-         FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id JOIN orders o ON o.id = d.order_id
+      `SELECT d.id, d.is_last_one, d.created_at, d.revealed_at, p.rank, p.name, p.value, o.order_no, o.status, o.kind, COALESCE(o.name, c.name) AS customer
+         FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id
+         LEFT JOIN orders o ON o.id = d.order_id LEFT JOIN customers c ON c.id = d.customer_id
         WHERE d.oripa_id = ? ORDER BY d.id DESC LIMIT 1000`
     ).bind(int(mm[1])).all();
     return json(results);
