@@ -194,7 +194,7 @@
   // ─── オリパ部品 ───
   function oripaCard(o) {
     const pct = o.total ? Math.round(o.remaining / o.total * 100) : 0;
-    const top = o.prizes.filter(p => !p.is_last_one).sort((a, b) => b.value - a.value)[0];
+    const top = o.prizes.filter(p => !p.is_last_one)[0];
     return `
       <a class="ocard ${o.open ? '' : 'closed'}" href="#/oripa/${o.id}">
         <div class="oimg">${o.image_url ? `<img src="${esc(o.image_url)}" alt="" loading="lazy">` : `<div class="oph">${esc(o.title)}</div>`}${o.open ? '' : '<span class="sold">完売・終了</span>'}</div>
@@ -435,7 +435,8 @@
     try { o = await api(`/api/oripas/${id}?_=${Date.now()}`); } catch (e) { app.innerHTML = `<p class="pad center">${esc(e.message)}</p>`; return; }
     const pool = o.prizes.filter(p => !p.is_last_one);
     const lastOne = o.prizes.find(p => p.is_last_one);
-    const expect = o.total ? Math.round(pool.reduce((s, p) => s + p.value * p.qty, 0) / o.total) : 0;
+    const showQty = config.oripa.showQty, showValue = config.oripa.showValue;
+    const expect = showQty && showValue && o.total ? Math.round(pool.reduce((s, p) => s + p.value * p.qty, 0) / o.total) : 0;
     const needPhone = config.phoneEnabled && config.phone.forOripa;
     const inCart = cart.oripa[o.id] || 0;
     const limit = Math.max(0, Math.min(o.max_per_order, config.oripa.maxPerOrder, o.remaining) - inCart);
@@ -465,23 +466,23 @@
       </div>
       <div class="box">
         <h3>封入内容</h3>
-        <p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>
+        ${showQty ? `<p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>` : ''}
         <div class="prizes">
           ${pool.map(p => `
             <div class="prize">
               ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
               <div class="pz-b"><span class="tag rank">${esc(p.rank)}</span> <b>${esc(p.name)}</b>
-                <div class="small muted">参考価格 ${yen(p.value)}　封入率 ${o.total ? (p.qty / o.total * 100).toFixed(p.qty / o.total < 0.01 ? 2 : 1) : '0'}%</div></div>
-              <div class="pz-n"><b>${p.qty}</b><span class="small muted">口</span></div>
+                ${showQty || showValue ? `<div class="small muted">${[showValue && `参考価格 ${yen(p.value)}`, showQty && `封入率 ${o.total ? (p.qty / o.total * 100).toFixed(p.qty / o.total < 0.01 ? 2 : 1) : '0'}%`].filter(Boolean).join('　')}</div>` : ''}</div>
+              ${showQty ? `<div class="pz-n"><b>${p.qty}</b><span class="small muted">口</span></div>` : '<span></span>'}
             </div>`).join('')}
           ${lastOne ? `
             <div class="prize last">
               ${lastOne.image_url ? `<img src="${esc(lastOne.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
-              <div class="pz-b"><span class="tag rank lo">ラストワン賞</span> <b>${esc(lastOne.name)}</b><div class="small muted">最後の1口を引いた方に追加でプレゼント（参考価格 ${yen(lastOne.value)}）</div></div>
-              <div class="pz-n"><b>1</b><span class="small muted">個</span></div>
+              <div class="pz-b"><span class="tag rank lo">ラストワン賞</span> <b>${esc(lastOne.name)}</b><div class="small muted">最後の1口を引いた方に追加でプレゼント${showValue ? `（参考価格 ${yen(lastOne.value)}）` : ''}</div></div>
+              <span></span>
             </div>` : ''}
         </div>
-        <p class="small muted">1口あたりの参考価格の平均 ${yen(expect)}（参考価格は当店の目安です）</p>
+        ${expect ? `<p class="small muted">1口あたりの参考価格の平均 ${yen(expect)}（参考価格は当店の目安です）</p>` : ''}
       </div>
       ${o.recent.length ? `<div class="box"><h3>最近の当選</h3><div class="recent">${o.recent.map(r => `<div class="small"><span class="tag rank ${r.is_last_one ? 'lo' : ''}">${esc(r.is_last_one ? 'ラストワン' : r.rank)}</span> ${esc(r.name)} <span class="muted">${jst(r.revealed_at)}</span></div>`).join('')}</div></div>` : ''}`;
     const add = $('#oadd');

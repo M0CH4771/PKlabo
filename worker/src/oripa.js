@@ -1,5 +1,5 @@
 // オリパ（オリジナルパック）
-// 方針: 口数・封入数・残数を常に公開 / 当選品は実物を発送（ポイント等への交換なし）/ 抽選は注文時にサーバーで行い、入金確認後に開封
+// 方針: 総口数・残り口数を公開（賞ごとの封入数・参考価格は設定で公開／非公開）/ 当選品は実物を発送（ポイント等への交換なし）/ 抽選は注文時にサーバーで行い、入金確認後に開封
 
 import { HttpError, json, int, str, readJson, randomInt, truthy, toSql } from './util.js';
 import { cfg } from './config.js';
@@ -23,6 +23,12 @@ async function prizesFor(env, ids) {
 
 const isOpen = o => o.status === 'live' && (!o.starts_at || o.starts_at <= toSql(new Date())) && (!o.ends_at || o.ends_at > toSql(new Date()));
 
+// 設定で非公開にした数字（封入数・参考価格）はお客様側に送らない
+function publicPrizes(env, prizes) {
+  const { showQty, showValue } = cfg(env).oripa;
+  return (prizes || []).map(({ oripa_id, sort, ...p }) => ({ ...p, qty: showQty ? p.qty : undefined, value: showValue ? p.value : undefined }));
+}
+
 function publicOripa(o, prizes) {
   return {
     id: o.id, title: o.title, image_url: o.image_url, description: o.description, price: o.price,
@@ -38,7 +44,7 @@ export async function oripaPublicRoutes(req, env, path) {
       `SELECT * FROM oripas WHERE status = 'live' OR (status = 'ended' AND updated_at > datetime('now','-14 days')) ORDER BY status = 'live' DESC, sort DESC, id DESC`
     ).all();
     const pz = await prizesFor(env, results.map(o => o.id));
-    return json(results.map(o => publicOripa(o, pz[o.id])), 200, { 'Cache-Control': 'public, max-age=5' });
+    return json(results.map(o => publicOripa(o, publicPrizes(env, pz[o.id]))), 200, { 'Cache-Control': 'public, max-age=5' });
   }
   const m = path.match(/^\/api\/oripas\/(\d+)$/);
   if (m && req.method === 'GET') {
@@ -50,7 +56,7 @@ export async function oripaPublicRoutes(req, env, path) {
       `SELECT p.rank, p.name, p.image_url, p.value, d.is_last_one, d.revealed_at FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id
         WHERE d.oripa_id = ? AND d.revealed_at IS NOT NULL ORDER BY d.revealed_at DESC LIMIT 20`
     ).bind(o.id).all();
-    return json({ ...publicOripa(o, pz[o.id]), recent }, 200, { 'Cache-Control': 'public, max-age=5' });
+    return json({ ...publicOripa(o, publicPrizes(env, pz[o.id])), recent: cfg(env).oripa.showValue ? recent : recent.map(({ value, ...r }) => r) }, 200, { 'Cache-Control': 'public, max-age=5' });
   }
   return null;
 }

@@ -77,6 +77,8 @@ export const DEFAULTS = {
   oripa: {
     requireLogin: true,
     showRecent: true,     // 最近の当選を公開する
+    showQty: false,       // 賞ごとの封入数・封入率を公開する
+    showValue: false,     // 賞ごとの参考価格を公開する
     maxPerOrder: 50,
     ageNotice: '18歳未満の方はご購入いただけません。',
     notice: '当選したカードは実物を発送します。ポイントや現金への交換はできません。封入内容は販売ページで公開しています。',
