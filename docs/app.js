@@ -192,6 +192,18 @@
     <div class="strip-row">${list.map((p, i) => pcard(p, ranked ? i + 1 : 0)).join('')}</div></section>` : '';
 
   // ─── オリパ部品 ───
+  // 【重要事項】：管理画面の設定（1行に1項目）＋設定から自動で作る項目（コイン・年齢）
+  function importantHtml() {
+    const lines = String(config.oripa.important || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (F_ON.coins) lines.push(`${config.coin.name}は当店のオリパ専用です（1${config.coin.name}＝1円相当）。${config.coin.expireMonths ? `有効期限は付与から${config.coin.expireMonths}か月です。` : ''}購入した${config.coin.name}の払い戻しはできません（法令で定める場合を除きます）。`);
+    if (config.oripa.ageNotice) lines.push(config.oripa.ageNotice);
+    if (!lines.length) return '';
+    return `<details class="important" id="important" open>
+      <summary><b>【重要事項】</b> ご購入前に必ずご確認ください。</summary>
+      <ul>${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul>
+      <p class="small muted">ほかに<a href="legal.html#oripa" target="_blank" rel="noopener">特定商取引法に基づく表記（オリパについて）</a>もご確認ください。</p>
+    </details>`;
+  }
   function oripaCard(o) {
     const pct = o.total ? Math.round(o.remaining / o.total * 100) : 0;
     const top = o.prizes.filter(p => !p.is_last_one)[0];
@@ -466,7 +478,7 @@
               <button class="btn primary" id="oadd" ${limit ? '' : 'disabled'}>カートに入れる</button>
             </div>
             ${inCart ? `<p class="small">カートに${inCart}口入っています。<a href="#/cart">カートを見る</a></p>` : ''}`}
-          <div class="oripa-note small">${esc(config.oripa.notice)}<br>${esc(config.oripa.ageNotice)}${config.oripa.requireLogin ? `<br>ご購入には会員登録（ログイン）${needPhone ? 'と電話番号認証' : ''}が必要です。` : ''}<br>${F_ON.coins ? `${esc(config.coin.name)}で引くとその場で結果が出ます。当選したカードはマイページの「獲得カード」から発送を依頼できます。` : '抽選は注文時にサーバーで行い、ご入金確認後に開封できます。'}</div>
+          <div class="oripa-note small">${config.oripa.requireLogin ? `ご購入には会員登録（ログイン）${needPhone ? 'と電話番号認証' : ''}が必要です。` : ''}${F_ON.coins ? `${esc(config.coin.name)}で引くとその場で結果が出ます。` : '抽選は注文時にサーバーで行い、ご入金確認後に開封できます。'}<br><a href="#important" class="jump-imp">【重要事項】を必ずご確認ください</a></div>
           ${o.description ? `<div class="desc">${esc(o.description).replace(/\n/g, '<br>')}</div>` : ''}
         </div>
       </div>
@@ -475,6 +487,7 @@
         <p class="small muted" style="margin:4px 0 10px">${o.open ? 'タップして選び、「開封する」で開けます。開けられたパックには中身が表示されます。' : '開封済みのパックの中身です。'}</p>
         <div class="board" id="board"></div></div>
         ${o.open && me ? `<div class="pickbar" id="pickbar" hidden><span><b id="pbn">0</b>個　<b id="pbc">0</b>${esc(config.coin.name)}</span><button class="btn" id="pbclear">選び直す</button><button class="btn primary" id="pbopen">開封する</button></div>` : ''}` : ''}
+      ${importantHtml()}
       <div class="box">
         <h3>封入内容</h3>
         ${showQty ? `<p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>` : ''}
@@ -536,7 +549,7 @@
       if (!me) return `<div class="coinpanel"><p class="small">パックを選んで、${cn}で開けられます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして選ぶ</a></div>`;
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
-        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
+        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span><a href="#important" class="jump-imp">【重要事項】</a>を確認し、同意します（${esc(config.oripa.ageNotice)}）</span></label>
         <button type="button" class="btn block" id="gopick" style="margin-top:0"><b>パックを選んで開ける</b></button>
         <p class="small muted" style="margin:0">ボードから好きなパックを選べます（1回に${lim}個まで）。</p>
         <div><span class="small">選ばずにランダムで引く</span>${drawBtns('data-rnd', lim)}</div>
@@ -615,11 +628,12 @@
       if (!me) return `<div class="coinpanel"><p class="small">${cn}を購入して引くと、その場で結果が出ます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして引く</a></div>`;
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
-        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
+        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span><a href="#important" class="jump-imp">【重要事項】</a>を確認し、同意します（${esc(config.oripa.ageNotice)}）</span></label>
         ${drawBtns('data-draw', lim)}
         ${coinBal < o.price ? `<p class="small danger">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
       </div>`;
     }
+    $$('.jump-imp').forEach(a => a.onclick = e => { e.preventDefault(); const box = $('#important'); if (box) { box.open = true; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
     const ag = $('#oagree'); if (ag) ag.onchange = () => store.set('pk_oripa_agree', ag.checked);
   }
 

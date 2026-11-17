@@ -650,3 +650,11 @@ body:has(.pickbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inse
 .btn.allin b { font-size: 15.5px; }
 .boardbox { scroll-margin-top: 70px; }
 .boardbox.flash { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow .3s; }
+
+/* オリパの【重要事項】 */
+.important { background: #fff; border: 1px solid var(--line2); border-top: 4px solid var(--accent); border-radius: var(--radius); padding: 12px 16px; margin: 12px 0; scroll-margin-top: 70px; }
+.important summary { cursor: pointer; font-size: 14px; }
+.important summary b { color: var(--accent); }
+.important ul { margin: 10px 0 6px; padding-left: 1.2em; display: grid; gap: 6px; font-size: 12.5px; line-height: 1.7; }
+.important li::marker { color: var(--accent); }
+.jump-imp { color: var(--accent); font-weight: 700; }

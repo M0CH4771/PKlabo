@@ -43,6 +43,7 @@
       <li>${esc(c.oripa.notice)}</li><li>${esc(c.oripa.ageNotice)}</li>
       <li>総口数・${c.oripa.showQty ? '賞ごとの封入数・' : '賞品の内容・'}全体の残り口数は販売ページで公開しています。販売開始後に封入内容を変更することはありません。</li>
       ${c.features.coins ? `<li>オリパは${esc(c.coin.name)}で引き、結果はその場で表示されます。当選したカードはマイページの「獲得カード」から発送を依頼してください（実物の発送のみ）。</li>` : '<li>抽選はご注文時に行い、ご入金確認後に結果を開封できます。ご注文がキャンセル・期限切れとなった場合、抽選結果は無効となり山に戻ります。</li>'}</ul>` : ''}
+    ${c.features.oripa && c.oripa.important ? `<h3>オリパの重要事項</h3><ul>${String(c.oripa.important).split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
     ${c.features.coins ? `<h2 id="coin">${esc(c.coin.name)}について</h2>
     <dl>
       <dt>名称</dt><dd>${esc(c.coin.name)}</dd>

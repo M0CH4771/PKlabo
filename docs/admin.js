@@ -1073,7 +1073,9 @@
           <label class="check"><input type="checkbox" name="o_showValue" ${s.oripa.showValue ? 'checked' : ''}> 販売ページに賞ごとの参考価格を表示する</label>
           <p class="hint2">お客様には賞ごとの封入数と総残り口数だけを表示し、賞ごとの残り数は表示しません（この管理画面でのみ確認できます）。</p>
           ${inp('o_maxPerOrder', '1注文の上限口数（全オリパ共通の上限）', s.oripa.maxPerOrder, 'number')}
-          ${ta('o_notice', '注意事項（販売ページ・購入時の同意文）', s.oripa.notice, 2)}
+          ${ta('o_notice', '一覧ページの注意書き', s.oripa.notice, 2)}
+          ${ta('o_important', '【重要事項】（販売ページに表示・1行に1項目）', s.oripa.important, 12)}
+          <p class="hint2">コインの有効期限・払い戻し不可と年齢の注意書きは、設定から自動で末尾に追加されます。<button type="button" class="link" id="impreset">初期の文章に戻す</button></p>
           ${inp('o_ageNotice', '年齢の注意書き', s.oripa.ageNotice)}
         </div>
 
@@ -1100,6 +1102,7 @@
     const bindX = () => $$('[data-x]').forEach(b => b.onclick = () => b.closest('.r').remove());
     bindX();
     $('#addcat').onclick = () => { $('#cats').insertAdjacentHTML('beforeend', rowHtml('data-ck placeholder="key"', 'data-cl placeholder="表示名"')); bindX(); };
+    const ir = $('#impreset'); if (ir) ir.onclick = () => { if (r.defaults?.oripaImportant && confirm('【重要事項】を初期の文章に戻しますか？（保存するまで反映されません）')) $('[name=o_important]').value = r.defaults.oripaImportant; };
     $('#addpack').onclick = () => { $('#packs').insertAdjacentHTML('beforeend', `<div class="r"><input data-pp type="number" placeholder="価格（円）"><input data-pc type="number" placeholder="付与コイン"><button type="button" class="link danger" data-x>削除</button></div>`); bindX(); };
     $('#addcond').onclick = () => { $('#conds').insertAdjacentHTML('beforeend', rowHtml('data-gk placeholder="状態"', 'data-gv placeholder="説明"')); bindX(); };
     $('#sf').onsubmit = async e => {
@@ -1115,7 +1118,7 @@
         points: { rate: g('p_rate'), signupBonus: g('p_signupBonus'), expireDays: g('p_expireDays'), minUse: g('p_minUse'), grantOn: g('p_grantOn'), oripaEarn: !!g('p_oripaEarn'), oripaUse: !!g('p_oripaUse') },
         phone: { forBonus: !!g('ph_forBonus'), forOripa: !!g('ph_forOripa') },
         coin: { name: g('c_name'), expireMonths: g('c_expireMonths'), shipFee: g('c_shipFee'), packs: $$('#packs .r').map(r => ({ price: $('[data-pp]', r).value, coins: $('[data-pc]', r).value })).filter(p => p.price && p.coins) },
-        oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), showQty: !!g('o_showQty'), showValue: !!g('o_showValue'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), ageNotice: g('o_ageNotice') },
+        oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), showQty: !!g('o_showQty'), showValue: !!g('o_showValue'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), important: g('o_important'), ageNotice: g('o_ageNotice') },
         categories: $$('#cats .r').map(r => ({ key: $('[data-ck]', r).value, label: $('[data-cl]', r).value })).filter(c => c.key && c.label),
         condGuide: $$('#conds .r').map(r => [$('[data-gk]', r).value, $('[data-gv]', r).value]).filter(x => x[0]),
         legal: { seller: g('l_seller'), manager: g('l_manager'), address: g('l_address'), phone: g('l_phone'), hours: g('l_hours'), email: g('l_email'), delivery: g('l_delivery'), returns: g('l_returns'), extra: g('l_extra') },

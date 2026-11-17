@@ -5,7 +5,7 @@ import {
   HttpError, json, int, str, toSql, nowIso, addMinutesIso, yen, parseImages, truthy, isEmail,
   timingSafeEqual, readJson, sendMail, notifyAdmin, clientIp, rateLimit, overLimit, verifyTotp, sha256hex,
 } from './util.js';
-import { loadConfig, cfg, publicConfig, saveSettings } from './config.js';
+import { loadConfig, cfg, publicConfig, saveSettings, DEFAULTS } from './config.js';
 import { getCustomer, memberRoutes, adminMemberRoutes, usePoints, addPoints, grantOrderPoints, reverseOrderPoints, expirePoints } from './members.js';
 import { oripaPublicRoutes, adminOripaRoutes, priceOripaItems, drawForItems, undoDraws, releaseOrderDraws, orderDraws, revealOrder } from './oripa.js';
 import { coinRoutes, adminCoinRoutes, addCoins, spendCoins, refundCoins, revokeCoins, expireCoins } from './coins.js';
@@ -808,7 +808,7 @@ async function adminRoutesInner(req, env, path, url) {
     return json(results);
   }
 
-  if (path === '/api/admin/settings' && m === 'GET') return json({ settings: c, env: { stripe: Boolean(env.STRIPE_SECRET_KEY), webhook: Boolean(env.STRIPE_WEBHOOK_SECRET), mail: c.mailEnabled, sms: c.smsReady, totp: Boolean(env.ADMIN_TOTP_SECRET), r2: Boolean(env.IMAGES), siteUrl: env.SITE_URL || '' } });
+  if (path === '/api/admin/settings' && m === 'GET') return json({ settings: c, env: { stripe: Boolean(env.STRIPE_SECRET_KEY), webhook: Boolean(env.STRIPE_WEBHOOK_SECRET), mail: c.mailEnabled, sms: c.smsReady, totp: Boolean(env.ADMIN_TOTP_SECRET), r2: Boolean(env.IMAGES), siteUrl: env.SITE_URL || '' }, defaults: { oripaImportant: DEFAULTS.oripa.important } });
   if (path === '/api/admin/settings' && m === 'PUT') return json({ settings: await saveSettings(env, await readJson(req)) });
 
   if (path === '/api/admin/stats' && m === 'GET') {
