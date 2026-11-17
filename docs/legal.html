@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>特定商取引法に基づく表記｜ポケカ買取ラボ</title>
+<title>特定商取引法に基づく表記</title>
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <style>
@@ -12,33 +12,51 @@
   .doc h2 { font-size: 17px; margin-top: 32px; border-left: 4px solid var(--accent); padding-left: 8px; }
   dl { display: grid; grid-template-columns: 1fr; margin: 0; }
   dt { font-weight: 700; font-size: 13.5px; padding-top: 12px; }
-  dd { margin: 2px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  dd { margin: 2px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 14px; white-space: pre-wrap; }
   @media (min-width: 700px) { dl { grid-template-columns: 220px 1fr; } dt, dd { padding: 12px 0; border-bottom: 1px solid var(--line); margin: 0; } }
   .todo { background: #fff3cd; padding: 0 4px; border-radius: 3px; }
 </style>
 </head>
 <body>
 <header class="site-header">
-  <a href="index.html" class="logo"><span class="logo-mark">PK</span><span class="logo-text">ポケカ買取ラボ<small>ONLINE SHOP</small></span></a>
+  <a href="index.html" class="logo"><span class="logo-mark" id="lm">PK</span><span class="logo-text"><span id="sn">ショップ</span><small>ONLINE SHOP</small></span></a>
 </header>
 <main class="container">
   <a href="index.html" class="back">← ショップへ戻る</a>
-  <div class="doc">
+  <div class="doc" id="doc"><p class="muted">読み込み中…</p></div>
+</main>
+<script>
+(async () => {
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  const todo = s => `<span class="todo">${s}</span>`;
+  const v = (x, label) => x ? esc(x) : todo(`【管理画面の「設定 → 特定商取引法」で${label}を入力してください】`);
+  let c;
+  try { c = await fetch(window.PKLABO.API_BASE.replace(/\/$/, '') + '/api/config').then(r => r.json()); }
+  catch { document.getElementById('doc').innerHTML = '<p>読み込みに失敗しました</p>'; return; }
+  const L = c.legal;
+  document.documentElement.style.setProperty('--accent', c.accentColor);
+  document.getElementById('sn').textContent = c.shopName;
+  document.getElementById('lm').textContent = c.logoText || 'PK';
+  document.title = `特定商取引法に基づく表記｜${c.shopName}`;
+  const pays = [c.cardEnabled && 'クレジットカード（Stripe）', c.bankEnabled && '銀行振込（前払い）', c.features.points && 'ポイント（1pt＝1円）'].filter(Boolean).join('、');
+  const days = c.shipDays.map(d => '日月火水木金土'[d]).join('・');
+  document.getElementById('doc').innerHTML = `
     <h1>特定商取引法に基づく表記</h1>
-    <!-- 【要記入】の部分を実際の情報に書き換えてください -->
     <dl>
-      <dt>販売業者</dt><dd><span class="todo">【要記入】屋号または法人名</span></dd>
-      <dt>運営統括責任者</dt><dd><span class="todo">【要記入】氏名</span></dd>
-      <dt>所在地</dt><dd><span class="todo">【要記入】〒000-0000 東京都〇〇区〇〇</span></dd>
-      <dt>電話番号</dt><dd><span class="todo">【要記入】00-0000-0000</span>（受付時間 <span class="todo">【要記入】</span>）</dd>
-      <dt>メールアドレス</dt><dd><span class="todo">【要記入】info@example.com</span></dd>
-      <dt>古物商許可</dt><dd id="kobutsu"></dd>
+      <dt>販売業者</dt><dd>${v(L.seller, '販売業者')}</dd>
+      <dt>運営統括責任者</dt><dd>${v(L.manager, '責任者名')}</dd>
+      <dt>所在地</dt><dd>${v(L.address, '所在地')}</dd>
+      <dt>電話番号</dt><dd>${v(L.phone, '電話番号')}${L.hours ? `（受付時間 ${esc(L.hours)}）` : ''}</dd>
+      <dt>メールアドレス</dt><dd>${v(L.email, 'メールアドレス')}</dd>
+      ${c.kobutsu ? `<dt>古物商許可</dt><dd>${esc(c.kobutsu)}</dd>` : ''}
       <dt>販売価格</dt><dd>各商品ページに税込価格で表示しています。</dd>
-      <dt>商品代金以外の必要料金</dt><dd>送料：全国一律 <span class="todo">230円</span>（<span class="todo">10,000円</span>以上のご注文で送料無料。店頭受け取りの場合は無料）<br>銀行振込の場合の振込手数料はお客様のご負担となります。</dd>
-      <dt>お支払い方法</dt><dd>銀行振込（前払い）<br>クレジットカード（Stripe）※導入後に表示</dd>
-      <dt>お支払い時期</dt><dd>銀行振込：ご注文から3日以内にお振込みください。期限を過ぎた場合は自動的にキャンセルとなります。<br>クレジットカード：ご注文時に決済されます。</dd>
-      <dt>商品の引渡し時期</dt><dd>営業日の<span class="todo">13時</span>までにカード決済・ご入金確認ができたご注文は当日、それ以降は翌営業日に発送いたします。<br>店頭受け取りの場合は、準備ができ次第メールでお知らせします。</dd>
-      <dt>返品・交換について</dt><dd>商品の性質上、お客様都合による返品・交換はお受けしておりません。<br>商品間違い・破損など当店の不備による場合は、商品到着後7日以内にご連絡ください。送料当店負担にて交換または返金いたします。</dd>
+      <dt>商品代金以外の必要料金</dt><dd>送料：全国一律 ${yen(c.shippingFee)}（${yen(c.freeShippingOver)}以上のご注文で送料無料${c.pickupEnabled ? '。店頭受け取りの場合は無料' : ''}）\n銀行振込の場合の振込手数料はお客様のご負担となります。</dd>
+      <dt>お支払い方法</dt><dd>${esc(pays)}</dd>
+      <dt>お支払い時期</dt><dd>${c.bankEnabled ? `銀行振込：ご注文から${c.paymentDays}日以内にお振込みください。期限を過ぎた場合は自動的にキャンセルとなります。\n` : ''}${c.cardEnabled ? 'クレジットカード：ご注文時に決済されます。' : ''}</dd>
+      <dt>商品の引渡し時期</dt><dd>${L.delivery ? esc(L.delivery) : `${days}曜日に発送しています。${c.shipCutoffHour}時までにカード決済・ご入金確認ができたご注文は当日、それ以降は翌発送日に発送いたします。`}${c.pickupEnabled ? '\n店頭受け取りの場合は、準備ができ次第メールでお知らせします。' : ''}</dd>
+      <dt>返品・交換について</dt><dd>${esc(L.returns)}</dd>
+      ${L.extra ? `<dt>その他</dt><dd>${esc(L.extra)}</dd>` : ''}
     </dl>
 
     <h2 id="policy">ご注文・キャンセルについて</h2>
@@ -46,16 +64,24 @@
       <li>シングルカードは一点ものが多いため、ご注文確定時点で在庫を確保します。</li>
       <li>入金期限を過ぎたご注文は自動でキャンセルとなり、在庫は再販売されます。</li>
       <li>ご入金後のお客様都合によるキャンセルはお受けできません。</li>
-      <li>商品の状態表記（S/A/B/C）は当店基準です。完美品をお求めの方はPSA鑑定品をご検討ください。</li>
+      <li>商品の状態表記は当店基準です。</li>
       <li>転売目的と判断した場合や、不正な決済が疑われる場合はご注文をお断りすることがあります。</li>
     </ul>
+    ${c.features.oripa ? `<h2 id="oripa">オリパについて</h2><ul>
+      <li>${esc(c.oripa.notice)}</li><li>${esc(c.oripa.ageNotice)}</li>
+      <li>総口数・賞ごとの封入数・残り数は販売ページで常に公開しています。販売開始後に封入内容を変更することはありません。</li>
+      <li>抽選はご注文時に行い、ご入金確認後に結果を開封できます。ご注文がキャンセル・期限切れとなった場合、抽選結果は無効となり山に戻ります。</li></ul>` : ''}
+    ${c.features.points ? `<h2 id="points">ポイントについて</h2><ul>
+      <li>会員登録で${c.points.signupBonus}ポイント、お買い物金額（送料・ポイント利用分を除く）の${c.points.rate}%を${c.points.grantOn === 'paid' ? '入金確認時' : '発送時'}に付与します。</li>
+      <li>1ポイント＝1円として次回以降のお買い物にご利用いただけます。現金への交換はできません。</li>
+      ${c.points.expireDays ? `<li>最後にポイントが増減した日から${c.points.expireDays}日間ご利用がない場合、ポイントは失効します。</li>` : ''}
+      <li>ご注文がキャンセルとなった場合、利用したポイントは返却し、付与したポイントは取り消します。</li></ul>` : ''}
 
     <h2 id="privacy">プライバシーポリシー</h2>
-    <p>当店は、ご注文時にお預かりした氏名・住所・電話番号・メールアドレスを、商品の発送およびご注文に関するご連絡のためにのみ利用します。法令に基づく場合を除き、ご本人の同意なく第三者に提供することはありません。ただし、商品の配送のため配送業者に、決済処理のため決済代行会社（Stripe）に必要な範囲で提供します。</p>
-    <p>個人情報の開示・訂正・削除のご依頼は、上記メールアドレスまでご連絡ください。</p>
-  </div>
-</main>
-<footer class="site-footer"><p class="muted small">© ポケカ買取ラボ</p></footer>
-<script>document.getElementById('kobutsu').textContent = window.PKLABO.KOBUTSU + '（ポケカ買取ラボ）';</script>
+    <p>当店は、ご注文・会員登録時にお預かりした氏名・住所・電話番号・メールアドレスを、商品の発送、ご注文・会員サービスに関するご連絡のためにのみ利用します。法令に基づく場合を除き、ご本人の同意なく第三者に提供することはありません。ただし、商品の配送のため配送業者に、決済処理のため決済代行会社（Stripe）に必要な範囲で提供します。</p>
+    <p>個人情報の開示・訂正・削除のご依頼は、上記メールアドレスまでご連絡ください。会員の方はマイページから退会（会員情報の削除）ができます。</p>`;
+  if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+})();
+</script>
 </body>
 </html>

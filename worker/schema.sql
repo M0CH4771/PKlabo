@@ -19,10 +19,12 @@ CREATE TABLE IF NOT EXISTS products (
   description   TEXT    DEFAULT '',
   active        INTEGER NOT NULL DEFAULT 1,    -- 1=公開 0=非公開
   sort          INTEGER NOT NULL DEFAULT 0,
+  group_key     TEXT    NOT NULL DEFAULT '',   -- 同じカードの状態違いをまとめるキー
   created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(active, sort, id);
+CREATE INDEX IF NOT EXISTS idx_products_group ON products(group_key);
 CREATE INDEX IF NOT EXISTS idx_products_card ON products(card_no);
 
 CREATE TABLE IF NOT EXISTS price_history (
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS orders (
   status          TEXT    NOT NULL,          -- awaiting_payment / paid / shipped / cancelled / expired
   payment_method  TEXT    NOT NULL,          -- bank / card
   shipping_method TEXT    NOT NULL DEFAULT 'delivery', -- delivery / pickup
+  customer_id     INTEGER,                   -- 会員の場合
   name            TEXT    NOT NULL,
   kana            TEXT    DEFAULT '',
   email           TEXT    NOT NULL,
@@ -50,6 +53,9 @@ CREATE TABLE IF NOT EXISTS orders (
   subtotal        INTEGER NOT NULL,
   discount        INTEGER NOT NULL DEFAULT 0,
   coupon_code     TEXT    DEFAULT '',
+  points_used     INTEGER NOT NULL DEFAULT 0,
+  points_earn     INTEGER NOT NULL DEFAULT 0, -- 付与予定ポイント
+  points_granted  INTEGER NOT NULL DEFAULT 0,
   shipping_fee    INTEGER NOT NULL,
   total           INTEGER NOT NULL,
   carrier         TEXT    DEFAULT '',        -- japanpost / yamato / sagawa
@@ -62,11 +68,13 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 
 CREATE TABLE IF NOT EXISTS order_items (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  order_id    INTEGER NOT NULL REFERENCES orders(id),
-  product_id  INTEGER NOT NULL REFERENCES products(id),
+  order_id    INTEGER NOT NULL,
+  product_id  INTEGER NOT NULL DEFAULT 0,      -- オリパの場合は 0
+  oripa_id    INTEGER NOT NULL DEFAULT 0,
   name        TEXT    NOT NULL,              -- 注文時点の商品名スナップショット
   card_no     TEXT    DEFAULT '',
   condition   TEXT    DEFAULT '',
@@ -104,3 +112,98 @@ CREATE TABLE IF NOT EXISTS images (
   data          BLOB    NOT NULL,
   created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- 管理画面で変更する設定（key='site' に JSON で保存）
+CREATE TABLE IF NOT EXISTS settings (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 会員
+CREATE TABLE IF NOT EXISTS customers (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  email              TEXT    NOT NULL UNIQUE,
+  password_hash      TEXT    NOT NULL,
+  name               TEXT    NOT NULL,
+  kana               TEXT    DEFAULT '',
+  phone              TEXT    DEFAULT '',
+  zip                TEXT    DEFAULT '',
+  address            TEXT    DEFAULT '',
+  points             INTEGER NOT NULL DEFAULT 0,
+  points_updated_at  TEXT,
+  failed_logins      INTEGER NOT NULL DEFAULT 0,
+  locked_until       TEXT,
+  last_login_at      TEXT,
+  deleted            INTEGER NOT NULL DEFAULT 0,
+  created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash   TEXT PRIMARY KEY,
+  customer_id  INTEGER NOT NULL,
+  expires_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_customer ON sessions(customer_id);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash   TEXT PRIMARY KEY,
+  customer_id  INTEGER NOT NULL,
+  expires_at   TEXT NOT NULL,
+  used         INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS point_ledger (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  INTEGER NOT NULL,
+  delta        INTEGER NOT NULL,
+  reason       TEXT    NOT NULL,
+  order_id     INTEGER,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_customer ON point_ledger(customer_id, id);
+
+-- オリパ
+CREATE TABLE IF NOT EXISTS oripas (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  title          TEXT    NOT NULL,
+  image_url      TEXT    DEFAULT '',
+  description    TEXT    DEFAULT '',
+  price          INTEGER NOT NULL,               -- 1口の価格
+  total          INTEGER NOT NULL DEFAULT 0,     -- 総口数（ラストワン賞を除く賞品数の合計）
+  sold           INTEGER NOT NULL DEFAULT 0,
+  status         TEXT    NOT NULL DEFAULT 'draft', -- draft / live / ended
+  max_per_order  INTEGER NOT NULL DEFAULT 10,
+  starts_at      TEXT,
+  ends_at        TEXT,
+  sort           INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS oripa_prizes (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  oripa_id     INTEGER NOT NULL,
+  rank         TEXT    DEFAULT '',     -- S賞 / A賞 など
+  name         TEXT    NOT NULL,
+  image_url    TEXT    DEFAULT '',
+  qty          INTEGER NOT NULL,       -- 封入数
+  remaining    INTEGER NOT NULL,
+  value        INTEGER NOT NULL DEFAULT 0, -- 参考価格
+  is_last_one  INTEGER NOT NULL DEFAULT 0, -- 1=ラストワン賞（最後の1口を引いた人に追加でプレゼント）
+  sort         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_prizes_oripa ON oripa_prizes(oripa_id);
+
+CREATE TABLE IF NOT EXISTS oripa_draws (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  oripa_id     INTEGER NOT NULL,
+  order_id     INTEGER NOT NULL,
+  prize_id     INTEGER NOT NULL,
+  is_last_one  INTEGER NOT NULL DEFAULT 0,
+  revealed_at  TEXT,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_draws_order ON oripa_draws(order_id);
+CREATE INDEX IF NOT EXISTS idx_draws_oripa ON oripa_draws(oripa_id, revealed_at);
