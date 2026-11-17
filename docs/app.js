@@ -546,7 +546,9 @@
     function paintBoard(board) {
       const el = $('#board'); if (!el) return;
       const opened = new Map(board.opened.map(x => [x.slot, x]));
-      [...picked].forEach(s => { if (opened.has(s)) picked.delete(s); });
+      const lost = [...picked].filter(s => opened.has(s));
+      lost.forEach(s => picked.delete(s));
+      if (lost.length) toast(`選んでいた${lost.join('・')}番は、ほかの方が開けました`);
       let html = '';
       for (let n = 1; n <= board.size; n++) {
         const x = opened.get(n);
@@ -598,10 +600,11 @@
           btn.disabled = false;
         }
       }
-      // ほかのお客様が開けたパックを数十秒ごとに反映
-      const here = location.hash;
-      const tick = setInterval(async () => {
-        if (location.hash !== here || !$('#board')) { clearInterval(tick); return; }
+      // ほかのお客様が開けたパックを数十秒ごとに反映（表示し直すたびに前のタイマーは止める。
+      // 古いタイマーが残ると、空の選択でボードを描き直して選んだパックが外れてしまう）
+      clearInterval(window.__pkBoardTick);
+      const tick = window.__pkBoardTick = setInterval(async () => {
+        if (!$('#board') || window.__pkBoardTick !== tick) { clearInterval(tick); return; }
         if (document.hidden || document.querySelector('.op-ov')) return;
         try { const x = await api(`/api/oripas/${o.id}?_=${Date.now()}`); if (x.board && x.board.opened.length !== o.board.opened.length) { o.board = x.board; paintBoard(o.board); } } catch { /* 通信エラーは次回 */ }
       }, 20000);
@@ -623,7 +626,7 @@
   // 抽選結果（その場で開封）
   function showDrawResult(r, o, id) {
     window.PKOpening.play(r.draws, {
-      title: o.title, logo: config.logoText || 'PK',
+      title: o.title, logo: config.logoText || 'PK', shop: config.shopName,
       sub: `当選したカードは「獲得カード」に入りました（残り ${r.coins.toLocaleString()}${esc(config.coin.name)}）`,
       actions: [{ key: 'box', label: '獲得カードを見る' }, { key: 'again', label: o.pick_mode ? '続けて選ぶ' : '続けて引く', primary: true }],
       onAction(key, close) { close(); if (key === 'box') location.hash = '#/box'; else viewOripa(id); },
@@ -989,7 +992,7 @@
         const r = await api(`/api/orders/${encodeURIComponent(no)}/reveal?t=${encodeURIComponent(tk)}`, { method: 'POST' });
         const box = $('.oripa-open');
         const shown = r.draws.filter(d => !d.hidden);
-        window.PKOpening.play(shown, { title: 'オリパ開封', logo: config.logoText || 'PK', actions: [{ key: 'close', label: '結果を閉じる', primary: true }] });
+        window.PKOpening.play(shown, { title: 'オリパ開封', logo: config.logoText || 'PK', shop: config.shopName, actions: [{ key: 'close', label: '結果を閉じる', primary: true }] });
         box.innerHTML = `<h3>開封結果</h3><div class="draws opening">${shown.map((d, i) => drawCard(d, i)).join('')}</div>
           <p class="small muted">当選したカードは${pickup ? '店頭でお渡し' : '他の商品と一緒に発送'}します。</p>`;
         $$('.dcard', box).forEach(c => c.classList.add('flip'));

@@ -1,5 +1,6 @@
 // オリパの開封演出（ショップと管理画面の試し引きで共通）
-// パックを破る → カードが配られる → 弱い賞から順にめくる → 当たりは「確定演出」→ いちばん上の賞は中央で大きく開封
+// パックを破る → カードが出てくる → 「自動でめくる」か「自分でめくる」を選ぶ
+// 当たりはめくる前に裏面が光って揺れる（確定演出）。いちばん上の賞は中央で大きく開封
 (() => {
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const store = {
@@ -32,6 +33,7 @@
   }
   const sfx = {
     tear() { noise(0, 0.32, 0.22, 3200); noise(0.08, 0.2, 0.12, 1800); },
+    slide() { noise(0, 0.25, 0.07, 1200); },
     deal() { noise(0, 0.05, 0.06, 5000); },
     flip() { noise(0, 0.06, 0.12, 4200); tone(880, 0, 0.08, 'sine', 0.04); },
     tick(n) { tone(520 + n * 140, 0, 0.12, 'square', 0.035); },
@@ -85,19 +87,22 @@
 
   const ORDER = { normal: 0, high: 1, lo: 2, top: 3 };
   const label = d => d.is_last_one ? 'ラストワン賞' : (d.rank || '');
+  const backHtml = (logo, slot) => `<div class="op-back"><i class="op-frame"></i><span class="op-emb"><b>${esc(logo)}</b></span>${slot ? `<em class="op-no">${slot}番</em>` : ''}</div>`;
 
   function cardHtml(d, i, logo) {
     return `<div class="op-card t-${d.tier || 'normal'}" data-i="${i}"><div class="op-in">
-      <div class="op-back"><span>${esc(logo)}</span>${d.slot ? `<em class="op-no">${d.slot}番</em>` : ''}</div>
+      ${backHtml(logo, d.slot)}
       <div class="op-front">${d.image_url ? `<img src="${esc(d.image_url)}" alt="">` : '<div class="op-noimg"></div>'}
         <span class="op-rank">${esc(label(d))}</span><b>${esc(d.name)}</b>${d.slot ? `<em class="op-no">${d.slot}番</em>` : ''}</div>
     </div></div>`;
   }
 
-  // draws: [{ rank, name, image_url, is_last_one, tier }]、opts: { title, logo, sub, actions: [{ key, label, primary }], onAction(key, close) }
+  // draws: [{ rank, name, image_url, is_last_one, tier, slot }]
+  // opts: { title, logo, shop, sub, actions: [{ key, label, primary }], onAction(key, close) }
   function play(draws, opts = {}) {
     const logo = opts.logo || 'PK';
     let skip = reduced();
+    const n = draws.filter(d => !d.is_last_one).length;
     const ov = document.createElement('div');
     ov.className = 'op-ov';
     ov.setAttribute('role', 'dialog');
@@ -109,12 +114,29 @@
         <button type="button" class="op-btn" data-snd>${soundOn() ? '音：あり' : '音：なし'}</button>
         <button type="button" class="op-btn" data-skip>スキップ</button></span></div>
       <div class="op-stage">
-        <div class="op-pack" aria-hidden="true"><div class="op-pack-top"></div><div class="op-pack-body"><span class="op-pack-logo">${esc(logo)}</span><small>${esc(opts.title || '')}</small><em>${draws.filter(d => !d.is_last_one).length}口</em></div></div>
+        <div class="op-glow" aria-hidden="true"></div>
+        <div class="op-pack" aria-hidden="true">
+          <div class="op-stack"><div class="op-sc"></div><div class="op-sc"></div><div class="op-sc"></div></div>
+          <div class="op-crimp top"></div>
+          <div class="op-perf"><span>ここから開けてください</span></div>
+          <div class="op-pack-body">
+            <span class="op-pack-sub">${esc(opts.shop || '')}オリジナルパック</span>
+            <span class="op-pack-logo">${esc(logo)}</span>
+            <small>${esc(opts.title || '')}</small>
+            <em>${n}口${draws.some(d => d.is_last_one) ? '＋ラストワン賞' : ''}</em>
+          </div>
+          <div class="op-crimp bottom"></div>
+        </div>
         <p class="op-hint">タップして開封</p>
       </div>
       <div class="op-grid ${draws.length === 1 ? 'one' : draws.length <= 3 ? 'few' : ''}" hidden>${draws.map((d, i) => cardHtml(d, i, logo)).join('')}</div>
       <div class="op-spot" hidden></div>
-      <div class="op-foot" hidden>
+      <div class="op-choose op-dock" hidden>
+        <p>めくり方を選んでください</p>
+        <div class="op-acts"><button type="button" class="btn" data-mode="manual">自分でめくる</button><button type="button" class="btn primary" data-mode="auto">自動でめくる</button></div>
+      </div>
+      <div class="op-manual op-dock" hidden><p>カードをタップしてめくってください</p><div class="op-acts"><button type="button" class="btn" data-rest>残りを自動でめくる</button></div></div>
+      <div class="op-foot op-dock" hidden>
         ${opts.sub ? `<p>${opts.sub}</p>` : ''}
         <div class="op-acts">${(opts.actions || [{ key: 'close', label: '閉じる', primary: true }]).map(a => `<button type="button" class="btn ${a.primary ? 'primary' : ''}" data-act="${esc(a.key)}">${esc(a.label)}</button>`).join('')}</div>
       </div>`;
@@ -123,68 +145,126 @@
     document.documentElement.classList.add('op-lock');
     const fx = ov.querySelector('.op-fx');
     const $ = s => ov.querySelector(s);
-    const close = () => { ov.remove(); document.documentElement.classList.remove('op-lock'); };
-    let wake = null;
+    let wake = null, chooseResolve = null, manualDone = null;
+    const onKey = e => { if (e.key === 'Escape') doSkip(); };
+    const close = () => { ov.remove(); document.documentElement.classList.remove('op-lock'); document.removeEventListener('keydown', onKey); };
     const sleep = ms => new Promise(r => { if (skip) return r(); const t = setTimeout(r, ms); wake = () => { clearTimeout(t); r(); }; });
-    const waitTap = (ms) => new Promise(r => {
+    const waitTap = (ms, area) => new Promise(r => {
       if (skip) return r();
-      const done = () => { clearTimeout(t); ov.removeEventListener('click', h); r(); };
+      const el = area || ov;
+      const done = () => { clearTimeout(t); el.removeEventListener('click', h); r(); };
       const h = e => { if (!e.target.closest('.op-bar')) done(); };
-      const t = setTimeout(done, ms);
-      ov.addEventListener('click', h);
+      const t = ms ? setTimeout(done, ms) : 0;
+      el.addEventListener('click', h);
       wake = done;
     });
+    const doSkip = () => {
+      skip = true;
+      if (wake) wake();
+      if (chooseResolve) chooseResolve('auto');
+      if (manualDone) manualDone();
+    };
     $('[data-snd]').onclick = e => { const on = !soundOn(); store.set('pk_sound', on ? '1' : '0'); e.target.textContent = on ? '音：あり' : '音：なし'; };
-    $('[data-skip]').onclick = () => { skip = true; if (wake) wake(); };
+    $('[data-skip]').onclick = doSkip;
     ov.querySelectorAll('[data-act]').forEach(b => b.onclick = () => (opts.onAction || (() => close()))(b.dataset.act, close));
-    const onKey = e => { if (e.key === 'Escape') { skip = true; if (wake) wake(); } };
     document.addEventListener('keydown', onKey);
 
+    const cards = () => [...ov.querySelectorAll('.op-grid .op-card')];
+    const finish = () => {
+      cards().forEach(c => c.classList.add('flip'));
+      $('[data-skip]').hidden = true;
+      $('.op-choose').hidden = true;
+      $('.op-manual').hidden = true;
+      $('.op-grid').classList.remove('tap');
+      $('.op-foot').hidden = false;
+      $('.op-foot .btn')?.focus();
+    };
+
+    // 1枚めくる（当たりは確定演出つき）
+    let busy = false;
+    async function reveal(i) {
+      const c = cards()[i];
+      if (!c || c.classList.contains('flip')) return;
+      const tier = draws[i].tier || 'normal';
+      if (skip) { c.classList.add('flip', 'shown'); return; }
+      busy = true;
+      c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      if (tier === 'normal') {
+        c.classList.add('flip', 'shown'); sfx.flip();
+      } else if (tier === 'top') {
+        await spotlight(draws[i], c);
+      } else {
+        c.classList.add('tease');
+        for (let k = 0; k < 3; k++) { sfx.tick(k); await sleep(230); }
+        c.classList.remove('tease'); c.classList.add('flip', 'shown');
+        sfx.high();
+        const r = c.getBoundingClientRect();
+        if (!skip) confetti(fx, r.left + r.width / 2, r.top + r.height / 2, 'small');
+        await sleep(450);
+      }
+      busy = false;
+    }
+    const allOpen = () => cards().every(c => c.classList.contains('flip'));
+    const autoRest = async () => {
+      const order = cards().map((c, i) => i).filter(i => !cards()[i].classList.contains('flip'))
+        .sort((a, b) => ORDER[draws[a].tier || 'normal'] - ORDER[draws[b].tier || 'normal'] || a - b);
+      const normals = order.filter(i => (draws[i].tier || 'normal') === 'normal').length;
+      for (const i of order) { await reveal(i); if ((draws[i].tier || 'normal') === 'normal') await sleep(normals > 6 ? 90 : 170); }
+    };
+
     (async () => {
-      // 1. パックを破る
+      // 1. パックを破って、中のカードを引き出す
       $('.op-pack').classList.add('in');
-      await waitTap(1600);
+      await waitTap(0, $('.op-stage'));
       $('.op-hint').hidden = true;
-      if (!skip) { sfx.tear(); $('.op-pack').classList.add('torn'); }
-      await sleep(520);
+      if (!skip) {
+        sfx.tear(); $('.op-pack').classList.add('torn');
+        await sleep(450);
+        sfx.slide(); $('.op-pack').classList.add('out');
+        await sleep(750);
+      }
       $('.op-stage').hidden = true;
 
       // 2. 配る
       const grid = $('.op-grid');
       grid.hidden = false;
-      const cards = [...grid.querySelectorAll('.op-card')];
       if (!skip) {
-        cards.forEach((c, i) => { c.style.setProperty('--d', `${Math.min(i, 20) * 55}ms`); c.classList.add('deal'); });
-        for (let i = 0; i < Math.min(cards.length, 8); i++) setTimeout(() => !skip && sfx.deal(), i * 55);
-        await sleep(Math.min(cards.length, 20) * 55 + 450);
+        cards().forEach((c, i) => { c.style.setProperty('--d', `${Math.min(i, 20) * 55}ms`); c.classList.add('deal'); });
+        for (let i = 0; i < Math.min(cards().length, 8); i++) setTimeout(() => !skip && sfx.deal(), i * 55);
+        await sleep(Math.min(cards().length, 20) * 55 + 450);
       }
+      if (skip) { finish(); return; }
 
-      // 3. 弱い賞から順にめくる（いちばん上の賞は最後）
-      const order = cards.map((c, i) => i).sort((a, b) => ORDER[draws[a].tier || 'normal'] - ORDER[draws[b].tier || 'normal'] || a - b);
-      const normals = order.filter(i => (draws[i].tier || 'normal') === 'normal').length;
-      for (const i of order) {
-        const c = cards[i], tier = draws[i].tier || 'normal';
-        if (skip) { c.classList.add('flip', 'shown'); continue; }
-        c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        if (tier === 'normal') {
-          c.classList.add('flip'); sfx.flip();
-          await sleep(normals > 6 ? 90 : 170);
-        } else if (tier === 'top') {
-          await spotlight(draws[i], c);
-        } else {
-          c.classList.add('tease');
-          for (let k = 0; k < 3; k++) { sfx.tick(k); await sleep(230); }
-          c.classList.remove('tease'); c.classList.add('flip', 'shown');
-          sfx.high();
-          const r = c.getBoundingClientRect();
-          if (!skip) confetti(fx, r.left + r.width / 2, r.top + r.height / 2, 'small');
-          await sleep(650);
-        }
-      }
-      cards.forEach(c => c.classList.add('flip'));
-      $('[data-skip]').hidden = true;
-      $('.op-foot').hidden = false;
-      $('.op-foot .btn')?.focus();
+      // 3. めくり方を選ぶ（前回の選び方にフォーカス）
+      const choose = $('.op-choose');
+      choose.hidden = false;
+      choose.querySelector(`[data-mode="${store.get('pk_flip_mode', 'auto')}"]`)?.focus();
+      const mode = await new Promise(r => { chooseResolve = r; choose.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => r(b.dataset.mode)); });
+      chooseResolve = null;
+      choose.hidden = true;
+      if (!skip) store.set('pk_flip_mode', mode);
+
+      if (mode === 'auto' || skip) { await autoRest(); finish(); return; }
+
+      // 4. 自分でめくる：タップした順に1枚ずつ
+      const manual = $('.op-manual');
+      manual.hidden = false;
+      grid.classList.add('tap');
+      await new Promise(done => {
+        manualDone = done;
+        cards().forEach((c, i) => c.onclick = async () => {
+          if (busy || c.classList.contains('flip')) return;
+          await reveal(i);
+          if (allOpen()) done();
+        });
+        manual.querySelector('[data-rest]').onclick = async () => {
+          if (busy) return;
+          manual.hidden = true; grid.classList.remove('tap');
+          await autoRest(); done();
+        };
+      });
+      manualDone = null;
+      finish();
     })();
 
     // いちばん上の賞：中央で大きく、光の中で開封
@@ -209,8 +289,6 @@
       gridCard.classList.add('flip', 'shown');
     }
 
-    const obs = new MutationObserver(() => { if (!ov.isConnected) { document.removeEventListener('keydown', onKey); obs.disconnect(); } });
-    obs.observe(document.body, { childList: true, subtree: true });
     return { close };
   }
 

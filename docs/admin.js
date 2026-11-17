@@ -754,7 +754,7 @@
         drawn.push(...got); render(got);
         if (window.PKOpening && $('#tanim', td)?.checked !== false) {
           const tier = window.PKOpening.tiers(pile);
-          window.PKOpening.play(got.map(p => ({ ...p, tier: tier.get(p) || 'normal' })), { title: `${title}（テスト）`, logo: settings?.logoText || 'PK' });
+          window.PKOpening.play(got.map(p => ({ ...p, tier: tier.get(p) || 'normal' })), { title: `${title}（テスト）`, logo: settings?.logoText || 'PK', shop: settings?.shopName || '' });
         }
       });
       $('#treset', td).onclick = () => { pile = fresh(); drawn = []; spent = 0; render(); };
