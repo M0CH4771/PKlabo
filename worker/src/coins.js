@@ -6,7 +6,7 @@
 import { HttpError, json, int, str, readJson, rateLimit } from './util.js';
 import { cfg } from './config.js';
 import { getCustomer } from './members.js';
-import { drawForItems, undoDraws } from './oripa.js';
+import { drawForItems, undoDraws, prizeTiers, publicDraw } from './oripa.js';
 
 const expiresSql = months => months > 0 ? `datetime('now', '+${int(months)} months')` : 'NULL';
 
@@ -132,8 +132,9 @@ export async function coinRoutes(req, env, path) {
     const { results: prizes } = await env.DB.prepare(`SELECT id, rank, name, image_url, value FROM oripa_prizes WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
     const byId = new Map(prizes.map(p => [p.id, p]));
     const bal = await env.DB.prepare('SELECT coins FROM customers WHERE id = ?').bind(cust.id).first();
+    const tiers = await prizeTiers(env, [o.id]);
     return json({
-      draws: draws.map(d => ({ ...byId.get(d.prize_id), is_last_one: d.is_last_one, title: o.title })),
+      draws: draws.map(d => publicDraw(env, { ...byId.get(d.prize_id), prize_id: d.prize_id, is_last_one: d.is_last_one, title: o.title }, tiers)),
       coins: bal.coins, cost,
     });
   }
@@ -149,7 +150,7 @@ export async function coinRoutes(req, env, path) {
     const cust = await getCustomer(req, env);
     if (!cust) throw new HttpError(401, 'ログインしてください');
     const { results } = await env.DB.prepare(
-      `SELECT d.id, d.is_last_one, d.created_at, p.rank, p.name, p.image_url, p.value, o.title
+      `SELECT d.id, d.is_last_one, d.created_at, p.rank, p.name, p.image_url, o.title
          FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id JOIN oripas o ON o.id = d.oripa_id
         WHERE d.customer_id = ? AND d.order_id IS NULL ORDER BY d.id DESC LIMIT 500`
     ).bind(cust.id).all();

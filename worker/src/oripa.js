@@ -153,13 +153,42 @@ export async function releaseOrderDraws(env, orderId) {
   await env.DB.prepare('DELETE FROM oripa_draws WHERE order_id = ?').bind(orderId).run();
 }
 
+// 開封演出の強さ：top＝いちばん高い賞 / high＝高めで数が少ない賞 / lo＝ラストワン / normal＝それ以外
+export function tierOf(prizes) {
+  const t = new Map();
+  const pool = prizes.filter(p => !p.is_last_one);
+  const total = pool.reduce((s, p) => s + p.qty, 0) || 1;
+  const vals = pool.map(p => p.value);
+  const max = Math.max(0, ...vals), min = Math.min(...vals);
+  for (const p of prizes) {
+    if (p.is_last_one) t.set(p.id, 'lo');
+    else if (max > min && p.value === max) t.set(p.id, 'top');
+    else if (p.value > min && (p.qty / total <= 0.2 || p.value >= min * 3)) t.set(p.id, 'high');
+    else t.set(p.id, 'normal');
+  }
+  return t;
+}
+export async function prizeTiers(env, oripaIds) {
+  const ids = [...new Set(oripaIds)];
+  if (!ids.length) return new Map();
+  const { results } = await env.DB.prepare(`SELECT id, oripa_id, qty, value, is_last_one FROM oripa_prizes WHERE oripa_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+  const all = new Map();
+  ids.forEach(oid => tierOf(results.filter(p => p.oripa_id === oid)).forEach((v, k) => all.set(k, v)));
+  return all;
+}
+// お客様に返す当選内容（参考価格は公開設定のときだけ）
+export function publicDraw(env, d, tiers) {
+  const { value, prize_id, ...rest } = d;
+  return { ...rest, tier: tiers.get(prize_id) || 'normal', ...(cfg(env).oripa.showValue ? { value } : {}) };
+}
+
 export async function orderDraws(env, orderId, reveal) {
   const { results } = await env.DB.prepare(
-    `SELECT d.id, d.oripa_id, o.title, d.is_last_one, d.revealed_at, p.rank, p.name, p.image_url, p.value
+    `SELECT d.id, d.oripa_id, d.prize_id, o.title, d.is_last_one, d.revealed_at, p.rank, p.name, p.image_url, p.value
        FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id JOIN oripas o ON o.id = d.oripa_id
       WHERE d.order_id = ? ORDER BY d.id`
   ).bind(orderId).all();
-  if (reveal) return results;
+  if (reveal) { const tiers = await prizeTiers(env, results.map(d => d.oripa_id)); return results.map(d => publicDraw(env, d, tiers)); }
   return results.map(d => ({ id: d.id, oripa_id: d.oripa_id, title: d.title, hidden: true }));
 }
 

@@ -519,19 +519,12 @@
 
   // 抽選結果（その場で開封）
   function showDrawResult(r, o, id) {
-    const d = document.createElement('dialog');
-    d.className = 'sheet result';
-    d.innerHTML = `<div class="sheet-h"><b>${esc(o.title)}</b><span class="small">残り ${r.coins.toLocaleString()}${esc(config.coin.name)}</span></div>
-      <div class="sheet-b"><div class="draws opening">${r.draws.map((x, i) => drawCard(x, i)).join('')}</div>
-      <p class="small muted">当選したカードはマイページの「獲得カード」に入りました。まとめて発送を依頼できます。</p></div>
-      <div class="sheet-f"><a class="btn" href="#/box" id="tobox">獲得カードを見る</a><button class="btn primary" id="again">続けて引く</button></div>`;
-    document.body.appendChild(d);
-    d.showModal();
-    requestAnimationFrame(() => setTimeout(() => $$('.dcard', d).forEach(c => c.classList.add('flip')), 80));
-    const close = () => { d.close(); d.remove(); };
-    $('#tobox', d).onclick = close;
-    $('#again', d).onclick = () => { close(); viewOripa(id); };
-    d.addEventListener('cancel', () => { d.remove(); viewOripa(id); });
+    window.PKOpening.play(r.draws, {
+      title: o.title, logo: config.logoText || 'PK',
+      sub: `当選したカードは「獲得カード」に入りました（残り ${r.coins.toLocaleString()}${esc(config.coin.name)}）`,
+      actions: [{ key: 'box', label: '獲得カードを見る' }, { key: 'again', label: '続けて引く', primary: true }],
+      onAction(key, close) { close(); if (key === 'box') location.hash = '#/box'; else viewOripa(id); },
+    });
   }
 
   // ─── コイン購入 ───
@@ -887,9 +880,11 @@
       try {
         const r = await api(`/api/orders/${encodeURIComponent(no)}/reveal?t=${encodeURIComponent(tk)}`, { method: 'POST' });
         const box = $('.oripa-open');
-        box.innerHTML = `<h3>開封結果</h3><div class="draws opening">${r.draws.map((d, i) => drawCard(d, i)).join('')}</div>
+        const shown = r.draws.filter(d => !d.hidden);
+        window.PKOpening.play(shown, { title: 'オリパ開封', logo: config.logoText || 'PK', actions: [{ key: 'close', label: '結果を閉じる', primary: true }] });
+        box.innerHTML = `<h3>開封結果</h3><div class="draws opening">${shown.map((d, i) => drawCard(d, i)).join('')}</div>
           <p class="small muted">当選したカードは${pickup ? '店頭でお渡し' : '他の商品と一緒に発送'}します。</p>`;
-        requestAnimationFrame(() => setTimeout(() => $$('.dcard', box).forEach(c => c.classList.add('flip')), 60));
+        $$('.dcard', box).forEach(c => c.classList.add('flip'));
       } catch (e) { toast(e.message); rv.disabled = false; }
     };
   }

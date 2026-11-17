@@ -690,6 +690,8 @@
     };
   }
 
+  const store_get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+  const store_set = (k, v) => { try { localStorage.setItem(k, v); } catch { /* 保存できない環境 */ } };
   // 試し引き：画面の中だけで抽選する（在庫・売上・お客様には一切影響しない）
   function testDraw(title, price, srcPrizes, useRemaining) {
     const fresh = () => srcPrizes.filter(p => p.name).map(p => ({ ...p, left: p.is_last_one ? 1 : Math.max(0, +(useRemaining ? p.remaining : p.qty) || 0) }));
@@ -722,6 +724,7 @@
           ${[1, 10].map(n => `<button type="button" class="btn ${n === 1 ? '' : 'primary'}" data-n="${n}" ${left ? '' : 'disabled'}>${n}回引く</button>`).join('')}
           <button type="button" class="btn" data-n="all" ${left ? '' : 'disabled'}>残り全部（${left}口）</button>
           <button type="button" class="btn" id="treset">最初から</button>
+          <label class="check small"><input type="checkbox" id="tanim" ${store_get('pk_test_anim', '1') === '1' ? 'checked' : ''}> 演出を見る</label>
           <span class="small muted" style="margin-left:auto">残り ${left}口</span>
         </div>
         ${latest.length ? `<div class="draws opening" id="tdraws">${latest.slice(0, 30).map(card).join('')}</div>${latest.length > 30 ? `<p class="small muted">ほか${latest.length - 30}枚</p>` : ''}` : ''}
@@ -733,8 +736,13 @@
         const n = b.dataset.n === 'all' ? poolLeft() : Math.min(+b.dataset.n, poolLeft());
         const got = []; for (let i = 0; i < n; i++) got.push(...draw1());
         drawn.push(...got); render(got);
+        if (window.PKOpening && $('#tanim', td)?.checked !== false) {
+          const tier = window.PKOpening.tiers(pile);
+          window.PKOpening.play(got.map(p => ({ ...p, tier: tier.get(p) || 'normal' })), { title: `${title}（テスト）`, logo: settings?.logoText || 'PK' });
+        }
       });
       $('#treset', td).onclick = () => { pile = fresh(); drawn = []; spent = 0; render(); };
+      $('#tanim', td).onchange = e => store_set('pk_test_anim', e.target.checked ? '1' : '0');
       $('#tclose', td).onclick = () => { td.close(); td.remove(); };
       requestAnimationFrame(() => setTimeout(() => $$('#tdraws .dcard', td).forEach(c => c.classList.add('flip')), 60));
     };
