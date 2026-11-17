@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ポケカ買取ラボ オンラインショップ</title>
+<meta name="description" content="ポケモンカードのシングル・PSA鑑定品の通販。ポケカ買取ラボ公式オンラインショップ。">
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <a href="#/" class="logo"><span class="logo-mark">PK</span><span class="logo-text">ポケカ買取ラボ<small>ONLINE SHOP</small></span></a>
+  <a href="#/cart" class="cart-btn" aria-label="カート">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+    <span id="cart-count" class="badge" hidden>0</span>
+  </a>
+</header>
+
+<main id="app" class="container"><p class="muted center pad">読み込み中…</p></main>
+
+<footer class="site-footer">
+  <nav>
+    <a href="legal.html">特定商取引法に基づく表記</a>
+    <a href="legal.html#policy">返品・キャンセルについて</a>
+    <a href="legal.html#privacy">プライバシーポリシー</a>
+  </nav>
+  <p class="muted small" id="kobutsu"></p>
+  <p class="muted small">© ポケカ買取ラボ</p>
+</footer>
+
+<div id="toast" class="toast" hidden></div>
+
+<script>
+(() => {
+  const CFG = window.PKLABO;
+  const API = CFG.API_BASE.replace(/\/$/, '');
+  const app = document.getElementById('app');
+  document.getElementById('kobutsu').textContent = '古物商許可：' + CFG.KOBUTSU;
+
+  const CATEGORIES = [
+    ['all', 'すべて'], ['single', 'シングル'], ['psa', 'PSA鑑定品'], ['box', 'BOX・パック'], ['supply', 'サプライ'],
+  ];
+
+  // ─── ユーティリティ ───
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2200);
+  }
+  async function api(path, opts = {}) {
+    const res = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error(data.error || '通信エラーが発生しました'); e.data = data; throw e; }
+    return data;
+  }
+  const jstDate = utc => utc ? new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+  // ─── 状態 ───
+  let config = null;
+  let products = null;
+  let listState = { q: '', cat: 'all', sort: 'new', inStock: false };
+  const cart = {
+    items: store.get('pk_cart', {}),           // { productId: qty }
+    save() { store.set('pk_cart', this.items); updateCartBadge(); },
+    add(id, qty = 1) {
+      const p = products?.find(x => x.id === id);
+      const cur = this.items[id] || 0;
+      const max = Math.min(p ? p.stock : 99, config?.maxQtyPerItem ?? 10);
+      if (cur + qty > max) { toast('在庫数を超えています'); return false; }
+      this.items[id] = cur + qty; this.save(); return true;
+    },
+    set(id, qty) { if (qty <= 0) delete this.items[id]; else this.items[id] = qty; this.save(); },
+    clear() { this.items = {}; this.save(); },
+    count() { return Object.values(this.items).reduce((a, b) => a + b, 0); },
+  };
+  function updateCartBadge() {
+    const b = $('#cart-count'); const n = cart.count();
+    b.textContent = n; b.hidden = n === 0;
+  }
+
+  async function loadBase() {
+    if (!config) config = await api('/api/config');
+    if (!products) products = await api('/api/products');
+  }
+
+  // ─── 画面 ───
+  function cardImage(p, cls = '') {
+    return p.image_url
+      ? `<img class="${cls}" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">`
+      : `<div class="${cls} noimg"><span>NO IMAGE</span></div>`;
+  }
+  function condBadge(p) {
+    const c = p.condition || '';
+    const cls = /^PSA\s*10/i.test(c) ? 'psa10' : /^PSA/i.test(c) ? 'psa' : '';
+    return c ? `<span class="tag cond ${cls}">${esc(c)}</span>` : '';
+  }
+
+  function viewList() {
+    const s = listState;
+    const q = s.q.trim().toLowerCase();
+    let list = products.filter(p =>
+      (s.cat === 'all' || p.category === s.cat) &&
+      (!s.inStock || p.stock > 0) &&
+      (!q || [p.name, p.set_name, p.card_no, p.rarity].join(' ').toLowerCase().includes(q))
+    );
+    if (s.sort === 'cheap') list = [...list].sort((a, b) => a.price - b.price);
+    if (s.sort === 'high') list = [...list].sort((a, b) => b.price - a.price);
+
+    app.innerHTML = `
+      <div class="toolbar">
+        <input id="q" type="search" placeholder="カード名・型番・弾で検索" value="${esc(s.q)}" autocomplete="off">
+        <div class="chips">${CATEGORIES.map(([k, l]) => `<button class="chip ${s.cat === k ? 'on' : ''}" data-cat="${k}">${l}</button>`).join('')}</div>
+        <div class="row-between">
+          <label class="check"><input type="checkbox" id="instock" ${s.inStock ? 'checked' : ''}> 在庫ありのみ</label>
+          <select id="sort">
+            <option value="new" ${s.sort === 'new' ? 'selected' : ''}>新着順</option>
+            <option value="cheap" ${s.sort === 'cheap' ? 'selected' : ''}>価格が安い順</option>
+            <option value="high" ${s.sort === 'high' ? 'selected' : ''}>価格が高い順</option>
+          </select>
+        </div>
+      </div>
+      <p class="muted small">${list.length}件</p>
+      <div class="grid">
+        ${list.map(p => `
+          <article class="pcard ${p.stock <= 0 ? 'soldout' : ''}">
+            <a href="#/p/${p.id}" class="pimg">${cardImage(p)}${p.stock <= 0 ? '<span class="sold">SOLD OUT</span>' : ''}</a>
+            <div class="pbody">
+              <a href="#/p/${p.id}" class="pname">${esc(p.name)}</a>
+              <div class="pmeta">${p.card_no ? `<span>${esc(p.card_no)}</span>` : ''}${p.rarity ? `<span class="tag">${esc(p.rarity)}</span>` : ''}${condBadge(p)}</div>
+              <div class="pfoot">
+                <span class="price">${yen(p.price)}</span>
+                ${p.stock > 0 ? `<button class="btn sm add" data-id="${p.id}">カートへ</button>` : ''}
+              </div>
+            </div>
+          </article>`).join('') || '<p class="muted pad">該当する商品がありません</p>'}
+      </div>`;
+
+    const qi = $('#q');
+    qi.addEventListener('input', () => { listState.q = qi.value; clearTimeout(viewList._t); viewList._t = setTimeout(() => { viewList(); const n = $('#q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); });
+    app.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { listState.cat = b.dataset.cat; viewList(); });
+    $('#instock').onchange = e => { listState.inStock = e.target.checked; viewList(); };
+    $('#sort').onchange = e => { listState.sort = e.target.value; viewList(); };
+    app.querySelectorAll('.add').forEach(b => b.onclick = () => { if (cart.add(+b.dataset.id)) toast('カートに追加しました'); });
+  }
+
+  function viewProduct(id) {
+    const p = products.find(x => x.id === id);
+    if (!p) { app.innerHTML = '<p class="pad center">商品が見つかりません。<a href="#/">一覧へ戻る</a></p>'; return; }
+    const catLabel = (CATEGORIES.find(c => c[0] === p.category) || [])[1] || '';
+    app.innerHTML = `
+      <a href="#/" class="back">← 一覧へ戻る</a>
+      <div class="detail">
+        <div class="dimg">${cardImage(p)}</div>
+        <div class="dinfo">
+          <p class="muted small">${esc(catLabel)}${p.set_name ? ' ／ ' + esc(p.set_name) : ''}</p>
+          <h1>${esc(p.name)}</h1>
+          <div class="pmeta">${p.card_no ? `<span>${esc(p.card_no)}</span>` : ''}${p.rarity ? `<span class="tag">${esc(p.rarity)}</span>` : ''}${condBadge(p)}</div>
+          <p class="price big">${yen(p.price)} <small class="muted">税込</small></p>
+          <p class="${p.stock > 0 ? '' : 'danger'}">${p.stock > 0 ? `在庫 ${p.stock}点` : '売り切れ'}</p>
+          ${p.stock > 0 ? `
+            <div class="qty-row">
+              <select id="qty">${Array.from({ length: Math.min(p.stock, config.maxQtyPerItem) }, (_, i) => `<option>${i + 1}</option>`).join('')}</select>
+              <button class="btn primary" id="add">カートに入れる</button>
+            </div>` : ''}
+          ${p.description ? `<div class="desc">${esc(p.description).replace(/\n/g, '<br>')}</div>` : ''}
+          <div class="note small muted">
+            <p>状態表記：S＝未使用美品 / A＝目立つ傷なし / B＝小傷・白欠けあり / C＝傷・折れあり</p>
+            <p>実物の写真は店頭在庫の状態によって異なる場合があります。</p>
+          </div>
+        </div>
+      </div>`;
+    const add = $('#add');
+    if (add) add.onclick = () => { if (cart.add(p.id, +$('#qty').value)) toast('カートに追加しました'); };
+  }
+
+  function cartLines() {
+    const lines = [];
+    for (const [id, qty] of Object.entries(cart.items)) {
+      const p = products.find(x => x.id === +id);
+      lines.push({ id: +id, qty, p });
+    }
+    return lines;
+  }
+  function totals(lines) {
+    const subtotal = lines.reduce((s, l) => s + (l.p ? l.p.price * l.qty : 0), 0);
+    const shipping = subtotal === 0 ? 0 : (subtotal >= config.freeShippingOver ? 0 : config.shippingFee);
+    return { subtotal, shipping, total: subtotal + shipping };
+  }
+
+  function viewCart() {
+    const lines = cartLines();
+    if (!lines.length) { app.innerHTML = '<div class="pad center"><p>カートは空です</p><a class="btn" href="#/">商品を見る</a></div>'; return; }
+    const problems = lines.filter(l => !l.p || l.p.stock < l.qty);
+    const t = totals(lines);
+    app.innerHTML = `
+      <h1 class="h">カート</h1>
+      <div class="lines">
+        ${lines.map(l => l.p ? `
+          <div class="line ${l.p.stock < l.qty ? 'warn' : ''}">
+            <div class="limg">${cardImage(l.p)}</div>
+            <div class="linfo">
+              <div class="lname">${esc(l.p.name)}</div>
+              <div class="muted small">${esc(l.p.card_no)} ${esc(l.p.condition)}</div>
+              <div class="price">${yen(l.p.price)}</div>
+              ${l.p.stock < l.qty ? `<div class="danger small">在庫が${l.p.stock}点に減りました</div>` : ''}
+            </div>
+            <div class="lqty">
+              <select data-id="${l.id}">${Array.from({ length: Math.max(1, Math.min(l.p.stock, config.maxQtyPerItem)) }, (_, i) => `<option ${i + 1 === l.qty ? 'selected' : ''}>${i + 1}</option>`).join('')}</select>
+              <button class="link danger" data-del="${l.id}">削除</button>
+            </div>
+          </div>` : `
+          <div class="line warn"><div class="linfo">販売終了した商品です</div><button class="link danger" data-del="${l.id}">削除</button></div>`).join('')}
+      </div>
+      <div class="summary">
+        <div><span>小計</span><span>${yen(t.subtotal)}</span></div>
+        <div><span>送料</span><span>${t.shipping ? yen(t.shipping) : '無料'}</span></div>
+        ${t.shipping ? `<p class="muted small">あと${yen(config.freeShippingOver - t.subtotal)}で送料無料</p>` : ''}
+        <div class="total"><span>合計</span><span>${yen(t.total)}</span></div>
+        <a class="btn primary block ${problems.length ? 'disabled' : ''}" href="${problems.length ? 'javascript:void 0' : '#/checkout'}">ご購入手続きへ</a>
+        ${problems.length ? '<p class="danger small">在庫が足りない商品があります。数量を変更してください</p>' : ''}
+      </div>`;
+    app.querySelectorAll('select[data-id]').forEach(s => s.onchange = () => { cart.set(+s.dataset.id, +s.value); viewCart(); });
+    app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { cart.set(+b.dataset.del, 0); viewCart(); });
+  }
+
+  function viewCheckout() {
+    const lines = cartLines().filter(l => l.p);
+    if (!lines.length) { location.hash = '#/cart'; return; }
+    const t = totals(lines);
+    const saved = store.get('pk_customer', {});
+    app.innerHTML = `
+      <a href="#/cart" class="back">← カートへ戻る</a>
+      <h1 class="h">ご購入手続き</h1>
+      <form id="f" class="form" novalidate>
+        <fieldset>
+          <legend>お届け先</legend>
+          <label>お名前 <em>必須</em><input name="name" required autocomplete="name" value="${esc(saved.name)}"></label>
+          <label>フリガナ<input name="kana" value="${esc(saved.kana)}"></label>
+          <label>メールアドレス <em>必須</em><input name="email" type="email" required autocomplete="email" value="${esc(saved.email)}"></label>
+          <label>電話番号 <em>必須</em><input name="phone" type="tel" required autocomplete="tel" value="${esc(saved.phone)}"></label>
+          <label>郵便番号 <em>必須</em><input name="zip" inputmode="numeric" required autocomplete="postal-code" placeholder="1234567" value="${esc(saved.zip)}"></label>
+          <label>住所 <em>必須</em><textarea name="address" rows="2" required autocomplete="street-address">${esc(saved.address)}</textarea></label>
+          <label>備考<textarea name="note" rows="2" placeholder="ご要望があればご記入ください"></textarea></label>
+        </fieldset>
+        <fieldset>
+          <legend>お支払い方法</legend>
+          <label class="radio"><input type="radio" name="pay" value="bank" checked> 銀行振込（前払い）<span class="muted small">ご注文から${config.paymentDays}日以内にお振込みください</span></label>
+          ${config.cardEnabled ? '<label class="radio"><input type="radio" name="pay" value="card"> クレジットカード<span class="muted small">決済ページ（Stripe）へ移動します</span></label>' : ''}
+        </fieldset>
+        <div class="summary">
+          ${lines.map(l => `<div class="small"><span>${esc(l.p.name)} × ${l.qty}</span><span>${yen(l.p.price * l.qty)}</span></div>`).join('')}
+          <div><span>送料</span><span>${t.shipping ? yen(t.shipping) : '無料'}</span></div>
+          <div class="total"><span>合計</span><span>${yen(t.total)}</span></div>
+        </div>
+        <label class="check"><input type="checkbox" name="agree" required> <span><a href="legal.html" target="_blank">特定商取引法に基づく表記・返品について</a>に同意します</span></label>
+        <p id="err" class="danger" hidden></p>
+        <button class="btn primary block" id="submit">注文を確定する</button>
+      </form>`;
+
+    const f = $('#f');
+    f.zip.addEventListener('change', async () => {
+      const z = f.zip.value.replace(/[^0-9]/g, '');
+      if (z.length !== 7 || f.address.value.trim()) return;
+      try {
+        const r = await fetch('https://zipcloud.ibsnet.co.jp/api/search?zipcode=' + z).then(r => r.json());
+        const a = r.results?.[0];
+        if (a) f.address.value = a.address1 + a.address2 + a.address3;
+      } catch {}
+    });
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const err = $('#err'); err.hidden = true;
+      const fd = Object.fromEntries(new FormData(f));
+      if (!fd.agree) { err.textContent = '特定商取引法に基づく表記への同意が必要です'; err.hidden = false; return; }
+      const customer = { name: fd.name, kana: fd.kana, email: fd.email, phone: fd.phone, zip: fd.zip, address: fd.address, note: fd.note };
+      store.set('pk_customer', { ...customer, note: '' });
+      const btn = $('#submit'); btn.disabled = true; btn.textContent = '送信中…';
+      try {
+        const res = await api('/api/orders', {
+          method: 'POST',
+          body: JSON.stringify({ customer, payment_method: fd.pay, items: lines.map(l => ({ product_id: l.id, qty: l.qty })) }),
+        });
+        const hist = store.get('pk_orders', []);
+        hist.unshift({ no: res.order_no, t: res.token, at: Date.now() });
+        store.set('pk_orders', hist.slice(0, 20));
+        cart.clear();
+        products = null; // 在庫を取り直す
+        if (res.checkout_url) location.href = res.checkout_url;
+        else location.hash = `#/order/${res.order_no}?t=${res.token}&new=1`;
+      } catch (ex) {
+        err.textContent = ex.message; err.hidden = false;
+        btn.disabled = false; btn.textContent = '注文を確定する';
+        if (ex.data?.failed) { products = null; }
+      }
+    };
+  }
+
+  async function viewOrder(no, token, isNew) {
+    app.innerHTML = '<p class="muted center pad">読み込み中…</p>';
+    let o;
+    try { o = await api(`/api/orders/${encodeURIComponent(no)}?t=${encodeURIComponent(token)}`); }
+    catch (e) { app.innerHTML = `<p class="pad center">${esc(e.message)}</p>`; return; }
+    const digits = o.order_no.replace('PK', '');
+    app.innerHTML = `
+      ${isNew ? '<div class="thanks"><h1>ご注文ありがとうございます</h1><p>このページをブックマークしておくと、あとでご注文状況を確認できます。</p></div>' : '<h1 class="h">ご注文状況</h1>'}
+      <div class="ordercard">
+        <div class="row-between"><span>注文番号</span><strong class="mono">${esc(o.order_no)}</strong></div>
+        <div class="row-between"><span>状況</span><span class="status s-${esc(o.status)}">${esc(o.status_label)}</span></div>
+        <div class="row-between"><span>ご注文日時</span><span>${jstDate(o.created_at)}</span></div>
+        ${o.tracking_no ? `<div class="row-between"><span>追跡番号</span><strong class="mono">${esc(o.tracking_no)}</strong></div>` : ''}
+      </div>
+      ${o.bank_info ? `
+        <div class="bankbox">
+          <h2>お振込のご案内</h2>
+          <p class="amount">お振込金額 <strong>${yen(o.total)}</strong></p>
+          <pre class="bank">${esc(o.bank_info.trim())}</pre>
+          <p><strong>振込名義の前に「${esc(digits)}」を入れてください</strong><br><span class="muted small">例）${esc(digits)} ヤマダタロウ</span></p>
+          <p class="small">お支払い期限：<strong>${jstDate(o.expires_at)}</strong> まで<br><span class="muted">期限を過ぎると自動でキャンセルになります。振込手数料はお客様のご負担となります。</span></p>
+        </div>` : ''}
+      <div class="summary">
+        ${o.items.map(i => `<div class="small"><span>${esc(i.name)} × ${i.qty}</span><span>${yen(i.price * i.qty)}</span></div>`).join('')}
+        <div><span>送料</span><span>${o.shipping_fee ? yen(o.shipping_fee) : '無料'}</span></div>
+        <div class="total"><span>合計</span><span>${yen(o.total)}</span></div>
+      </div>
+      <p class="small muted">お届け先：〒${esc(o.zip)} ${esc(o.address)} ${esc(o.name)} 様</p>
+      <a class="btn" href="#/">ショップトップへ</a>`;
+  }
+
+  // ─── ルーター ───
+  async function route() {
+    window.scrollTo(0, 0);
+    const h = location.hash.replace(/^#/, '') || '/';
+    const [path, qs] = h.split('?');
+    const params = new URLSearchParams(qs || '');
+    try {
+      const mo = path.match(/^\/order\/(PK\d{6})$/);
+      if (mo) { if (!config) config = await api('/api/config'); return viewOrder(mo[1], params.get('t'), params.get('new') === '1'); }
+      await loadBase();
+      updateCartBadge();
+      const mp = path.match(/^\/p\/(\d+)$/);
+      if (mp) return viewProduct(+mp[1]);
+      if (path === '/cart') return viewCart();
+      if (path === '/checkout') return viewCheckout();
+      return viewList();
+    } catch (e) {
+      app.innerHTML = `<div class="pad center"><p>読み込みに失敗しました</p><p class="muted small">${esc(e.message)}</p><button class="btn" onclick="location.reload()">再読み込み</button></div>`;
+    }
+  }
+  window.addEventListener('hashchange', route);
+  updateCartBadge();
+  route();
+})();
+</script>
+</body>
+</html>

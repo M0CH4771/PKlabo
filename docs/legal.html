@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>特定商取引法に基づく表記｜ポケカ買取ラボ</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<style>
+  .doc { background: #fff; border-radius: var(--radius); padding: 20px; }
+  .doc h1 { font-size: 20px; margin-top: 0; }
+  .doc h2 { font-size: 17px; margin-top: 32px; border-left: 4px solid var(--accent); padding-left: 8px; }
+  dl { display: grid; grid-template-columns: 1fr; margin: 0; }
+  dt { font-weight: 700; font-size: 13.5px; padding-top: 12px; }
+  dd { margin: 2px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  @media (min-width: 700px) { dl { grid-template-columns: 220px 1fr; } dt, dd { padding: 12px 0; border-bottom: 1px solid var(--line); margin: 0; } }
+  .todo { background: #fff3cd; padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a href="index.html" class="logo"><span class="logo-mark">PK</span><span class="logo-text">ポケカ買取ラボ<small>ONLINE SHOP</small></span></a>
+</header>
+<main class="container">
+  <a href="index.html" class="back">← ショップへ戻る</a>
+  <div class="doc">
+    <h1>特定商取引法に基づく表記</h1>
+    <!-- 【要記入】の部分を実際の情報に書き換えてください -->
+    <dl>
+      <dt>販売業者</dt><dd><span class="todo">【要記入】屋号または法人名</span></dd>
+      <dt>運営統括責任者</dt><dd><span class="todo">【要記入】氏名</span></dd>
+      <dt>所在地</dt><dd><span class="todo">【要記入】〒000-0000 東京都〇〇区〇〇</span></dd>
+      <dt>電話番号</dt><dd><span class="todo">【要記入】00-0000-0000</span>（受付時間 <span class="todo">【要記入】</span>）</dd>
+      <dt>メールアドレス</dt><dd><span class="todo">【要記入】info@example.com</span></dd>
+      <dt>古物商許可</dt><dd id="kobutsu"></dd>
+      <dt>販売価格</dt><dd>各商品ページに税込価格で表示しています。</dd>
+      <dt>商品代金以外の必要料金</dt><dd>送料：全国一律 <span class="todo">230円</span>（<span class="todo">10,000円</span>以上のご注文で送料無料）<br>銀行振込の場合の振込手数料はお客様のご負担となります。</dd>
+      <dt>お支払い方法</dt><dd>銀行振込（前払い）<br>クレジットカード（Stripe）※導入後に表示</dd>
+      <dt>お支払い時期</dt><dd>銀行振込：ご注文から3日以内にお振込みください。期限を過ぎた場合は自動的にキャンセルとなります。<br>クレジットカード：ご注文時に決済されます。</dd>
+      <dt>商品の引渡し時期</dt><dd>ご入金確認後、<span class="todo">【要記入】2〜3営業日</span>以内に発送いたします。</dd>
+      <dt>返品・交換について</dt><dd>商品の性質上、お客様都合による返品・交換はお受けしておりません。<br>商品間違い・破損など当店の不備による場合は、商品到着後7日以内にご連絡ください。送料当店負担にて交換または返金いたします。</dd>
+    </dl>
+
+    <h2 id="policy">ご注文・キャンセルについて</h2>
+    <ul>
+      <li>シングルカードは一点ものが多いため、ご注文確定時点で在庫を確保します。</li>
+      <li>入金期限を過ぎたご注文は自動でキャンセルとなり、在庫は再販売されます。</li>
+      <li>ご入金後のお客様都合によるキャンセルはお受けできません。</li>
+      <li>商品の状態表記（S/A/B/C）は当店基準です。完美品をお求めの方はPSA鑑定品をご検討ください。</li>
+      <li>転売目的と判断した場合や、不正な決済が疑われる場合はご注文をお断りすることがあります。</li>
+    </ul>
+
+    <h2 id="privacy">プライバシーポリシー</h2>
+    <p>当店は、ご注文時にお預かりした氏名・住所・電話番号・メールアドレスを、商品の発送およびご注文に関するご連絡のためにのみ利用します。法令に基づく場合を除き、ご本人の同意なく第三者に提供することはありません。ただし、商品の配送のため配送業者に、決済処理のため決済代行会社（Stripe）に必要な範囲で提供します。</p>
+    <p>個人情報の開示・訂正・削除のご依頼は、上記メールアドレスまでご連絡ください。</p>
+  </div>
+</main>
+<footer class="site-footer"><p class="muted small">© ポケカ買取ラボ</p></footer>
+<script>document.getElementById('kobutsu').textContent = window.PKLABO.KOBUTSU + '（ポケカ買取ラボ）';</script>
+</body>
+</html>

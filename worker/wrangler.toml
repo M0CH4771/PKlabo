@@ -1,0 +1,35 @@
+name = "pklabo-api"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pklabo-db"
+database_id = "ここに d1 create で表示された ID を貼る"
+
+# 入金期限切れ注文の自動キャンセル（15分ごと）
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+SHOP_NAME = "ポケカ買取ラボ"
+# GitHub Pages の URL（末尾スラッシュなし）。メール内リンクと Stripe の戻り先に使う
+SITE_URL = "https://m0ch4771.github.io/pklabo"
+# API を呼んでよい画面のドメイン（カンマ区切り）
+ALLOWED_ORIGIN = "https://m0ch4771.github.io"
+SHIPPING_FEE = "230"
+FREE_SHIPPING_OVER = "10000"
+PAYMENT_DAYS = "3"
+MAX_QTY_PER_ITEM = "10"
+BANK_INFO = """
+〇〇銀行 〇〇支店
+普通 1234567
+口座名義 ポケカカイトリラボ
+"""
+
+# ── 秘密の値は vars ではなく secret で登録（README 参照）──
+# npx wrangler secret put ADMIN_KEY             （必須）管理画面のログインキー
+# npx wrangler secret put STRIPE_SECRET_KEY     （任意）入れるとカード決済が有効になる
+# npx wrangler secret put STRIPE_WEBHOOK_SECRET （任意）Stripe の Webhook 署名シークレット
+# npx wrangler secret put RESEND_API_KEY        （任意）注文メール送信
+# MAIL_FROM / ADMIN_EMAIL / DISCORD_WEBHOOK_URL も secret か vars で設定（任意）

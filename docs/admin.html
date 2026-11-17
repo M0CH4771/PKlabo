@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>管理画面｜ポケカ買取ラボ EC</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+<style>
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs button { border: 1px solid var(--line); background: #fff; padding: 8px 16px; border-radius: 999px; font-weight: 600; cursor: pointer; }
+  .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .panel { background: #fff; border-radius: var(--radius); padding: 14px; }
+  .orders { display: grid; gap: 10px; }
+  .order { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 6px; }
+  .order .items { font-size: 13px; background: var(--bg); padding: 8px 10px; border-radius: 8px; }
+  .order .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .order input { width: 180px; padding: 6px 10px; font-size: 14px; }
+  .order textarea { font-size: 13px; padding: 6px 10px; }
+  .hint { background: #fff8e1; border-radius: 6px; padding: 4px 8px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; white-space: nowrap; }
+  tr.off td { opacity: .45; }
+  .thumb { width: 36px; aspect-ratio: 5/7; object-fit: contain; background: #f0f0f2; border-radius: 4px; }
+  .stockctl { display: inline-flex; align-items: center; gap: 4px; }
+  .stockctl button { width: 26px; height: 26px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
+  dialog { border: none; border-radius: var(--radius); padding: 0; width: min(560px, 94vw); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog form { padding: 18px; display: grid; gap: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .form label { font-weight: 600; }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .stat { background: #fff; border-radius: 10px; padding: 10px 14px; min-width: 120px; }
+  .stat b { display: block; font-size: 20px; }
+  .overflow { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header class="site-header">
+  <a href="admin.html" class="logo"><span class="logo-mark">PK</span><span class="logo-text">管理画面<small>ADMIN</small></span></a>
+  <button class="btn sm" id="logout" hidden>ログアウト</button>
+</header>
+<main class="container" id="app"></main>
+<div id="toast" class="toast" hidden></div>
+
+<dialog id="dlg"></dialog>
+
+<script>
+(() => {
+  const API = window.PKLABO.API_BASE.replace(/\/$/, '');
+  const app = document.getElementById('app');
+  const $ = (s, r = document) => r.querySelector(s);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  const jst = utc => utc ? new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  const STATUS = { awaiting_payment: '入金待ち', paid: '入金確認済み', shipped: '発送済み', cancelled: 'キャンセル', expired: '期限切れ' };
+  const CATS = { single: 'シングル', psa: 'PSA鑑定品', box: 'BOX・パック', supply: 'サプライ' };
+  const FIELDS = ['name', 'set_name', 'card_no', 'rarity', 'condition', 'category', 'price', 'stock', 'image_url', 'description', 'active', 'sort'];
+
+  let key = sessionStorage.getItem('pk_admin') || '';
+  let tab = 'orders';
+  let orderFilter = 'awaiting_payment';
+  let productQ = '';
+  let productsCache = [];
+
+  function toast(m) { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2400); }
+  async function api(path, opts = {}) {
+    const res = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', 'X-Admin-Key': key, ...(opts.headers || {}) } });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { logout(); throw new Error(data.error || '認証エラー'); }
+    if (!res.ok) throw new Error(data.error || '通信エラー');
+    return data;
+  }
+  function logout() { key = ''; sessionStorage.removeItem('pk_admin'); $('#logout').hidden = true; render(); }
+  $('#logout').onclick = logout;
+
+  function viewLogin() {
+    app.innerHTML = `
+      <form id="login" class="form" style="max-width:380px;margin:40px auto">
+        <fieldset><legend>管理キーでログイン</legend>
+          <input type="password" name="k" placeholder="ADMIN_KEY" autocomplete="current-password" required>
+          <p id="lerr" class="danger small" hidden></p>
+          <button class="btn primary block">ログイン</button>
+        </fieldset>
+      </form>`;
+    $('#login').onsubmit = async e => {
+      e.preventDefault();
+      key = e.target.k.value.trim();
+      try { await api('/api/admin/ping'); sessionStorage.setItem('pk_admin', key); render(); }
+      catch (err) { const l = $('#lerr'); l.textContent = err.message; l.hidden = false; }
+    };
+  }
+
+  function shell(inner) {
+    app.innerHTML = `
+      <div class="tabs">
+        <button data-tab="orders" class="${tab === 'orders' ? 'on' : ''}">注文</button>
+        <button data-tab="products" class="${tab === 'products' ? 'on' : ''}">商品</button>
+        <button data-tab="import" class="${tab === 'import' ? 'on' : ''}">CSV一括登録</button>
+        <a class="btn sm" href="index.html" target="_blank" style="margin-left:auto">ショップを開く ↗</a>
+      </div>
+      <div id="body">${inner}</div>`;
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
+  }
+
+  // ─── 注文 ───
+  async function viewOrders() {
+    shell('<p class="muted">読み込み中…</p>');
+    const all = await api('/api/admin/orders');
+    const count = s => all.filter(o => o.status === s).length;
+    const list = orderFilter === 'all' ? all : all.filter(o => o.status === orderFilter);
+    $('#body').innerHTML = `
+      <div class="stats">
+        <div class="stat"><span class="small muted">入金待ち</span><b>${count('awaiting_payment')}</b></div>
+        <div class="stat"><span class="small muted">発送待ち</span><b>${count('paid')}</b></div>
+        <div class="stat"><span class="small muted">発送済み（直近）</span><b>${count('shipped')}</b></div>
+      </div>
+      <div class="chips" style="margin-bottom:10px">
+        ${[['awaiting_payment', '入金待ち'], ['paid', '発送待ち'], ['shipped', '発送済み'], ['cancelled', 'キャンセル'], ['expired', '期限切れ'], ['all', 'すべて']]
+          .map(([k, l]) => `<button class="chip ${orderFilter === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}
+      </div>
+      <div class="orders">
+        ${list.map(o => `
+          <div class="order" data-id="${o.id}">
+            <div class="row-between">
+              <strong class="mono">${esc(o.order_no)}</strong>
+              <span class="status s-${esc(o.status)}">${STATUS[o.status]}</span>
+            </div>
+            <div class="small">${jst(o.created_at)}　${o.payment_method === 'bank' ? '銀行振込' : 'カード'}　<strong>${yen(o.total)}</strong>（送料${yen(o.shipping_fee)}）</div>
+            ${o.payment_method === 'bank' && o.status === 'awaiting_payment' ? `<div class="hint">振込名義の目印：<b>${esc(o.order_no.replace('PK', ''))}</b> ${esc(o.kana || o.name)}　期限 ${jst(o.expires_at)}</div>` : ''}
+            <div class="small">${esc(o.name)}${o.kana ? `（${esc(o.kana)}）` : ''} ／ ${esc(o.phone)} ／ ${esc(o.email)}<br>〒${esc(o.zip)} ${esc(o.address)}</div>
+            ${o.note ? `<div class="small">備考：${esc(o.note)}</div>` : ''}
+            <div class="items">${o.items.map(i => `${esc(i.name)} ${yen(i.price)} × ${i.qty}`).join('<br>')}</div>
+            <textarea class="memo" rows="1" placeholder="社内メモ">${esc(o.admin_memo)}</textarea>
+            <div class="actions">
+              ${o.status === 'awaiting_payment' ? `<button class="btn sm primary" data-act="paid">入金確認</button>` : ''}
+              ${o.status === 'paid' ? `<input class="trk" placeholder="追跡番号" value="${esc(o.tracking_no)}"><button class="btn sm primary" data-act="shipped">発送済みにする</button>` : ''}
+              ${o.status === 'shipped' && o.tracking_no ? `<span class="small">追跡番号 <b class="mono">${esc(o.tracking_no)}</b></span>` : ''}
+              ${['awaiting_payment', 'paid'].includes(o.status) ? `<button class="btn sm" data-act="cancelled">キャンセル（在庫を戻す）</button>` : ''}
+              <button class="btn sm" data-act="memo">メモ保存</button>
+            </div>
+          </div>`).join('') || '<p class="muted pad center">該当する注文はありません</p>'}
+      </div>`;
+    app.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { orderFilter = b.dataset.f; viewOrders(); });
+    app.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+      const card = b.closest('.order'); const id = card.dataset.id; const act = b.dataset.act;
+      const body = { admin_memo: $('.memo', card).value };
+      if (act === 'cancelled' && !confirm('この注文をキャンセルして在庫を戻しますか？\n（カード決済済みの場合、返金はStripeの管理画面で行ってください）')) return;
+      if (act === 'shipped') {
+        body.tracking_no = $('.trk', card).value.trim();
+        if (!body.tracking_no && !confirm('追跡番号なしで発送済みにしますか？')) return;
+      }
+      if (act !== 'memo') body.status = act;
+      b.disabled = true;
+      try { await api(`/api/admin/orders/${id}`, { method: 'PUT', body: JSON.stringify(body) }); toast('更新しました'); viewOrders(); }
+      catch (e) { toast(e.message); b.disabled = false; }
+    });
+  }
+
+  // ─── 商品 ───
+  async function viewProducts() {
+    shell('<p class="muted">読み込み中…</p>');
+    productsCache = await api('/api/admin/products');
+    drawProducts();
+  }
+  function drawProducts() {
+    const q = productQ.trim().toLowerCase();
+    const list = productsCache.filter(p => !q || [p.name, p.set_name, p.card_no, p.rarity].join(' ').toLowerCase().includes(q));
+    $('#body').innerHTML = `
+      <div class="row-between" style="margin-bottom:10px;gap:8px">
+        <input id="pq" type="search" placeholder="検索" value="${esc(productQ)}" style="max-width:320px">
+        <button class="btn primary sm" id="new">＋ 商品を追加</button>
+      </div>
+      <p class="small muted">${list.length}件 ／ 在庫合計 ${list.reduce((s, p) => s + p.stock, 0)}点</p>
+      <div class="panel overflow">
+        <table>
+          <thead><tr><th></th><th>商品名</th><th>型番</th><th>状態</th><th style="text-align:right">価格</th><th style="text-align:right">在庫</th><th></th></tr></thead>
+          <tbody>
+            ${list.map(p => `
+              <tr class="${p.active ? '' : 'off'}" data-id="${p.id}">
+                <td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}" alt="">` : ''}</td>
+                <td><b>${esc(p.name)}</b><br><span class="muted small">${esc(CATS[p.category] || p.category)} ${esc(p.set_name)} ${esc(p.rarity)}${p.active ? '' : ' ・非公開'}</span></td>
+                <td class="small">${esc(p.card_no)}</td>
+                <td class="small">${esc(p.condition)}</td>
+                <td class="num">${yen(p.price)}</td>
+                <td class="num"><span class="stockctl"><button data-st="-1">−</button><b>${p.stock}</b><button data-st="1">＋</button></span></td>
+                <td><button class="link" data-edit>編集</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    const pq = $('#pq');
+    pq.oninput = () => { productQ = pq.value; clearTimeout(drawProducts._t); drawProducts._t = setTimeout(() => { drawProducts(); const n = $('#pq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    $('#new').onclick = () => editProduct(null);
+    app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editProduct(productsCache.find(p => p.id === +b.closest('tr').dataset.id)));
+    app.querySelectorAll('[data-st]').forEach(b => b.onclick = async () => {
+      const p = productsCache.find(x => x.id === +b.closest('tr').dataset.id);
+      try { const r = await api(`/api/admin/products/${p.id}/stock`, { method: 'POST', body: JSON.stringify({ delta: +b.dataset.st }) }); p.stock = r.stock; drawProducts(); }
+      catch (e) { toast(e.message); }
+    });
+  }
+
+  function editProduct(p) {
+    const d = $('#dlg');
+    const v = p || { category: 'single', condition: 'A', active: 1, stock: 1, price: 0, sort: 0 };
+    d.innerHTML = `
+      <form method="dialog" class="form" id="pf">
+        <h2 style="margin:0">${p ? '商品を編集' : '商品を追加'}</h2>
+        <label>商品名 *<input name="name" required value="${esc(v.name)}"></label>
+        <div class="grid2">
+          <label>カテゴリ<select name="category" style="width:100%">${Object.entries(CATS).map(([k, l]) => `<option value="${k}" ${v.category === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label>弾・セット<input name="set_name" value="${esc(v.set_name)}"></label>
+          <label>型番<input name="card_no" value="${esc(v.card_no)}" placeholder="201/165"></label>
+          <label>レアリティ<input name="rarity" value="${esc(v.rarity)}" placeholder="SAR"></label>
+          <label>状態<input name="condition" value="${esc(v.condition)}" placeholder="A / PSA10" list="conds"></label>
+          <label>表示順（大きいほど上）<input name="sort" type="number" value="${esc(v.sort)}"></label>
+          <label>価格（税込） *<input name="price" type="number" min="0" required value="${esc(v.price)}"></label>
+          <label>在庫 *<input name="stock" type="number" min="0" required value="${esc(v.stock)}"></label>
+        </div>
+        <datalist id="conds"><option>S</option><option>A</option><option>B</option><option>C</option><option>PSA10</option><option>PSA9</option><option>未開封</option></datalist>
+        <label>画像URL<input name="image_url" value="${esc(v.image_url)}" placeholder="https://..."></label>
+        <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
+        <label class="check"><input type="checkbox" name="active" ${v.active ? 'checked' : ''}> ショップに公開する</label>
+        <div class="row-between">
+          ${p ? '<button type="button" class="link danger" id="del">削除</button>' : '<span></span>'}
+          <div style="display:flex;gap:8px"><button type="button" class="btn" id="cancel">閉じる</button><button class="btn primary" id="save">保存</button></div>
+        </div>
+      </form>`;
+    d.showModal();
+    $('#cancel').onclick = () => d.close();
+    $('#pf').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = Object.fromEntries(FIELDS.map(f => [f, fd.get(f)]));
+      body.active = fd.get('active') ? 1 : 0;
+      try {
+        if (p) await api(`/api/admin/products/${p.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        else await api('/api/admin/products', { method: 'POST', body: JSON.stringify(body) });
+        d.close(); toast('保存しました'); viewProducts();
+      } catch (err) { toast(err.message); }
+    };
+    const del = $('#del');
+    if (del) del.onclick = async () => {
+      if (!confirm('この商品を削除しますか？（注文履歴がある場合は非公開になります）')) return;
+      try { const r = await api(`/api/admin/products/${p.id}`, { method: 'DELETE' }); d.close(); toast(r.note || '削除しました'); viewProducts(); }
+      catch (err) { toast(err.message); }
+    };
+  }
+
+  // ─── CSV ───
+  function parseCSV(text) {
+    const rows = []; let row = []; let cell = ''; let q = false;
+    text = text.replace(/^﻿/, '');
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(cell); cell = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += c;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim() !== ''));
+  }
+  const HEAD_ALIAS = { '商品名': 'name', 'カード名': 'name', '弾': 'set_name', 'セット': 'set_name', '型番': 'card_no', 'レアリティ': 'rarity', '状態': 'condition', 'カテゴリ': 'category', '価格': 'price', '在庫': 'stock', '画像URL': 'image_url', '説明': 'description' };
+  const CAT_ALIAS = { 'シングル': 'single', 'PSA': 'psa', 'PSA鑑定品': 'psa', 'BOX': 'box', 'パック': 'box', 'BOX・パック': 'box', 'サプライ': 'supply' };
+
+  function viewImport() {
+    shell(`
+      <div class="panel form">
+        <p class="small">1行目に見出しを入れたCSVを貼り付けるか、ファイルを選んでください。使える見出し：<br>
+        <code>name(商品名), set_name(弾), card_no(型番), rarity(レアリティ), condition(状態), category(カテゴリ), price(価格), stock(在庫), image_url(画像URL), description(説明)</code><br>
+        カテゴリは single / psa / box / supply（日本語の「シングル」「PSA鑑定品」なども可）。</p>
+        <input type="file" id="file" accept=".csv,text/csv">
+        <textarea id="csv" rows="8" placeholder="商品名,型番,レアリティ,状態,価格,在庫&#10;リザードンex,201/165,SAR,A,12800,1"></textarea>
+        <button class="btn" id="preview">プレビュー</button>
+        <div id="pv"></div>
+      </div>`);
+    $('#file').onchange = async e => { const f = e.target.files[0]; if (f) $('#csv').value = await f.text(); };
+    $('#preview').onclick = () => {
+      const rows = parseCSV($('#csv').value);
+      if (rows.length < 2) { toast('データがありません'); return; }
+      const head = rows[0].map(h => HEAD_ALIAS[h.trim()] || h.trim());
+      const items = rows.slice(1).map(r => {
+        const o = {}; head.forEach((h, i) => { if (FIELDS.includes(h)) o[h] = (r[i] ?? '').trim(); });
+        if (o.category) o.category = CAT_ALIAS[o.category] || o.category;
+        if (o.price) o.price = o.price.replace(/[¥,円\s]/g, '');
+        return o;
+      }).filter(o => o.name);
+      $('#pv').innerHTML = `
+        <p><b>${items.length}件</b>を登録します（先頭5件）</p>
+        <div class="overflow"><table><tr><th>商品名</th><th>型番</th><th>状態</th><th>価格</th><th>在庫</th></tr>
+        ${items.slice(0, 5).map(o => `<tr><td>${esc(o.name)}</td><td>${esc(o.card_no)}</td><td>${esc(o.condition)}</td><td>${esc(o.price)}</td><td>${esc(o.stock)}</td></tr>`).join('')}</table></div>
+        <button class="btn primary" id="go" style="margin-top:10px">${items.length}件を登録する</button>`;
+      $('#go').onclick = async () => {
+        $('#go').disabled = true;
+        try { const r = await api('/api/admin/products/import', { method: 'POST', body: JSON.stringify({ rows: items }) }); toast(`${r.imported}件を登録しました`); tab = 'products'; render(); }
+        catch (e) { toast(e.message); $('#go').disabled = false; }
+      };
+    };
+  }
+
+  async function render() {
+    if (!key) { $('#logout').hidden = true; return viewLogin(); }
+    $('#logout').hidden = false;
+    try {
+      if (tab === 'orders') await viewOrders();
+      else if (tab === 'products') await viewProducts();
+      else viewImport();
+    } catch (e) { if (key) app.innerHTML = `<p class="danger pad center">${esc(e.message)}</p>`; }
+  }
+  render();
+})();
+</script>
+</body>
+</html>
