@@ -53,7 +53,8 @@ async function requireCustomer(req, env) {
 }
 
 const profile = c => ({
-  id: c.id, email: c.email, email_verified: Boolean(c.email_verified), name: c.name, kana: c.kana, phone: c.phone, zip: c.zip, address: c.address,
+  id: c.id, email: c.email, email_verified: Boolean(c.email_verified), phone_verified: Boolean(c.phone_e164),
+  phone_verified_number: c.phone_e164 ? '0' + c.phone_e164.slice(3, 5) + '-****-' + c.phone_e164.slice(-4) : '', name: c.name, kana: c.kana, phone: c.phone, zip: c.zip, address: c.address,
   points: c.points, points_updated_at: c.points_updated_at, created_at: c.created_at,
 });
 
@@ -116,12 +117,37 @@ async function sendVerifyMail(env, id, email, name) {
     `${name} 様\n\n${c.shopName}への会員登録ありがとうございます。\n以下のリンクを開いて、メールアドレスの確認を完了してください（3日以内）。\n${site}/#/verify?token=${token}\n${c.features.points && c.points.signupBonus ? `\n確認が完了すると、登録ボーナス${c.points.signupBonus}ポイントをお付けします。\n` : ''}\nお心当たりがない場合はこのメールを破棄してください。\n${c.shopName}`);
 }
 
+// 登録ボーナスは「メール確認（メール送信を設定している場合）」と「電話番号認証（SMS認証で必須にしている場合）」が済んでから
 async function grantSignupBonus(env, id) {
   const c = cfg(env);
+  const cust = await env.DB.prepare('SELECT email_verified, phone_e164 FROM customers WHERE id = ?').bind(id).first();
+  if (!cust) return 0;
+  if (c.mailEnabled && !cust.email_verified) return 0;
+  if (c.phoneEnabled && c.phone.forBonus && !cust.phone_e164) return 0;
   const r = await env.DB.prepare('UPDATE customers SET bonus_granted = 1 WHERE id = ? AND bonus_granted = 0').bind(id).run();
   if (r.meta.changes !== 1 || !c.features.points || c.points.signupBonus <= 0) return 0;
   await addPoints(env, id, c.points.signupBonus, '新規会員登録ボーナス');
   return c.points.signupBonus;
+}
+
+// 日本の携帯番号だけ受け付ける（海外の高額番号へのSMS送信を使った不正を防ぐ）
+export function normalizePhone(v) {
+  let s = String(v ?? '').normalize('NFKC').replace(/[^\d+]/g, '');
+  if (s.startsWith('+81')) s = '0' + s.slice(3);
+  else if (s.startsWith('81') && s.length === 12) s = '0' + s.slice(2);
+  return /^0[789]0\d{8}$/.test(s) ? '+81' + s.slice(1) : null;
+}
+
+async function twilio(env, path, params) {
+  const res = await fetch(`https://verify.twilio.com/v2/Services/${env.TWILIO_VERIFY_SID}/${path}`, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(params).toString(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 404 && path === 'VerificationCheck') return { status: 'expired' };
+  if (!res.ok) { console.error('twilio', res.status, data); throw new HttpError(502, 'SMSの送信に失敗しました。番号を確認して、しばらくしてからお試しください'); }
+  return data;
 }
 
 // ── 公開API ──
@@ -145,15 +171,12 @@ export async function memberRoutes(req, env, path) {
       `INSERT INTO customers (email, password_hash, name, kana, phone, zip, address) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).bind(email, await hashPassword(b.password), name, str(b.kana, 100), str(b.phone, 30), str(b.zip, 10), str(b.address, 300)).run();
     const id = r.meta.last_row_id;
-    if (c.mailEnabled) {
-      // メール確認が済んだら登録ボーナスを付与（使い捨てアドレスでのボーナス目当て登録を防ぐ）
-      await sendVerifyMail(env, id, email, name);
-    } else {
-      await grantSignupBonus(env, id);
-    }
+    // メール確認（＋電話番号認証）が済んだら登録ボーナスを付与（ボーナス目当ての複数登録を防ぐ）
+    if (c.mailEnabled) await sendVerifyMail(env, id, email, name);
+    await grantSignupBonus(env, id);
     const token = await createSession(env, id);
     const cust = await env.DB.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first();
-    return json({ token, customer: profile(cust), verify_sent: c.mailEnabled }, 201);
+    return json({ token, customer: profile(cust), verify_sent: c.mailEnabled, phone_required: c.phoneEnabled }, 201);
   }
 
   if (path === '/api/auth/login' && m === 'POST') {
@@ -235,6 +258,40 @@ export async function memberRoutes(req, env, path) {
     return json({ ok: true });
   }
 
+  if (path === '/api/me/phone/send' && m === 'POST') {
+    const cust = await requireCustomer(req, env);
+    if (!c.phoneEnabled) throw new HttpError(400, '電話番号認証は現在ご利用いただけません');
+    const e164 = normalizePhone((await readJson(req)).phone);
+    if (!e164) throw new HttpError(400, '携帯電話番号（070・080・090）を入力してください');
+    if (cust.phone_e164 === e164) return json({ ok: true, already: true });
+    const used = await env.DB.prepare('SELECT 1 FROM customers WHERE phone_e164 = ? AND id != ?').bind(e164, cust.id).first();
+    if (used) throw new HttpError(409, 'この電話番号は別のアカウントで認証済みです');
+    // SMS の不正大量送信（料金の水増し）対策
+    await rateLimit(env, `sms:c:${cust.id}`, 5, 3600, 'SMSの送信回数が上限に達しました。1時間ほどおいてお試しください');
+    await rateLimit(env, `sms:ip:${clientIp(req)}`, 10, 3600, 'SMSの送信回数が上限に達しました。1時間ほどおいてお試しください');
+    await rateLimit(env, `sms:p:${e164}`, 3, 3600, 'この番号へのSMS送信が続いています。1時間ほどおいてお試しください');
+    await rateLimit(env, 'sms:all', 300, 3600, 'ただいまSMSを送信できません。しばらくしてからお試しください');
+    await twilio(env, 'Verifications', { To: e164, Channel: 'sms', Locale: 'ja' });
+    return json({ ok: true });
+  }
+
+  if (path === '/api/me/phone/verify' && m === 'POST') {
+    const cust = await requireCustomer(req, env);
+    if (!c.phoneEnabled) throw new HttpError(400, '電話番号認証は現在ご利用いただけません');
+    const b = await readJson(req);
+    const e164 = normalizePhone(b.phone);
+    const code = String(b.code || '').replace(/\D/g, '');
+    if (!e164 || !/^\d{4,10}$/.test(code)) throw new HttpError(400, '電話番号と認証コードを入力してください');
+    await rateLimit(env, `smscheck:${cust.id}`, 10, 3600, '入力の失敗が続いています。しばらくしてからお試しください');
+    const r = await twilio(env, 'VerificationCheck', { To: e164, Code: code });
+    if (r.status !== 'approved') throw new HttpError(400, '認証コードが違うか、有効期限（10分）が切れています');
+    try {
+      await env.DB.prepare('UPDATE customers SET phone_e164 = ?, phone = ? WHERE id = ?').bind(e164, '0' + e164.slice(3), cust.id).run();
+    } catch { throw new HttpError(409, 'この電話番号は別のアカウントで認証済みです'); }
+    const bonus = await grantSignupBonus(env, cust.id);
+    return json({ ok: true, bonus });
+  }
+
   if (path === '/api/me' && m === 'GET') {
     const cust = await requireCustomer(req, env);
     const [{ results: ledger }, { results: orders }] = await Promise.all([
@@ -288,7 +345,7 @@ export async function adminMemberRoutes(req, env, path, url) {
     const q = str(url.searchParams.get('q'), 100);
     const like = `%${q}%`;
     const { results } = await env.DB.prepare(
-      `SELECT c.id, c.email, c.name, c.kana, c.phone, c.points, c.created_at, c.last_login_at,
+      `SELECT c.id, c.email, c.name, c.kana, c.phone, c.points, c.created_at, c.last_login_at, c.email_verified, c.phone_e164 IS NOT NULL AS phone_verified,
               COUNT(o.id) AS orders, COALESCE(SUM(CASE WHEN o.status IN ('paid','shipped') THEN o.total END), 0) AS spent
          FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
         WHERE c.deleted = 0 AND (? = '' OR c.email LIKE ? OR c.name LIKE ? OR c.kana LIKE ? OR c.phone LIKE ?)

@@ -242,6 +242,7 @@ async function createOrder(req, env) {
   const q = await quote(env, body, customer);
   if (q.oripaItems.length) {
     if (c.oripa.requireLogin && !customer) throw new HttpError(401, 'オリパのご購入には会員登録（ログイン）が必要です');
+    if (c.phoneEnabled && c.phone.forOripa && !customer?.phone_e164) throw new HttpError(403, 'オリパのご購入には電話番号認証が必要です（マイページから認証できます）');
     if (!body.oripa_agree) throw new HttpError(400, 'オリパの注意事項への同意が必要です');
   }
   if (!info.name || !info.email || !info.phone) throw new HttpError(400, 'お名前・メール・電話番号は必須です');
@@ -683,7 +684,7 @@ async function adminRoutesInner(req, env, path, url) {
     return json(results);
   }
 
-  if (path === '/api/admin/settings' && m === 'GET') return json({ settings: c, env: { stripe: Boolean(env.STRIPE_SECRET_KEY), webhook: Boolean(env.STRIPE_WEBHOOK_SECRET), mail: c.mailEnabled, r2: Boolean(env.IMAGES), siteUrl: env.SITE_URL || '' } });
+  if (path === '/api/admin/settings' && m === 'GET') return json({ settings: c, env: { stripe: Boolean(env.STRIPE_SECRET_KEY), webhook: Boolean(env.STRIPE_WEBHOOK_SECRET), mail: c.mailEnabled, sms: c.smsReady, totp: Boolean(env.ADMIN_TOTP_SECRET), r2: Boolean(env.IMAGES), siteUrl: env.SITE_URL || '' } });
   if (path === '/api/admin/settings' && m === 'PUT') return json({ settings: await saveSettings(env, await readJson(req)) });
 
   if (path === '/api/admin/stats' && m === 'GET') {

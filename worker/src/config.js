@@ -34,6 +34,7 @@ export const DEFAULTS = {
     groupVariants: true,  // 一覧で状態違いを1件にまとめる
     buyback: true,        // 買取価格の表示
     restock: true,        // 入荷通知
+    phoneVerify: false,   // 電話番号（SMS）認証。TWILIO_* の設定が必要
     coupons: true,        // クーポン
     members: true,        // 会員登録・ログイン
     points: true,         // ポイント制度（会員登録が必要）
@@ -54,11 +55,17 @@ export const DEFAULTS = {
     oripaUse: false,      // オリパにポイントを使える
   },
 
+  phone: {
+    forBonus: true,       // 登録ボーナスを電話番号認証後に付与（SMS認証を有効にした場合）
+    forOripa: true,       // オリパ購入に電話番号認証を必須にする（SMS認証を有効にした場合）
+  },
+
   oripa: {
     requireLogin: true,
+    showRecent: true,     // 最近の当選を公開する
     maxPerOrder: 50,
     ageNotice: '18歳未満の方はご購入いただけません。',
-    notice: '当選したカードは実物を発送します。ポイントや現金への交換はできません。封入数・残り数は常に公開しています。',
+    notice: '当選したカードは実物を発送します。ポイントや現金への交換はできません。封入内容は販売ページで公開しています。',
   },
 
   categories: [
@@ -141,6 +148,8 @@ export async function loadConfig(env, force) {
   c.cardEnabled = c.features.cardPayment && Boolean(env.STRIPE_SECRET_KEY);
   c.bankEnabled = c.features.bankPayment || !c.cardEnabled;
   c.mailEnabled = Boolean(env.RESEND_API_KEY && env.MAIL_FROM);
+  c.smsReady = Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SID);
+  c.phoneEnabled = c.features.phoneVerify && c.features.members && c.smsReady;
   env.__cfg = c;
   return c;
 }

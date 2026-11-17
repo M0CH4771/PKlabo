@@ -136,10 +136,13 @@ CREATE TABLE IF NOT EXISTS customers (
   locked_until       TEXT,
   last_login_at      TEXT,
   email_verified     INTEGER NOT NULL DEFAULT 0,
+  phone_e164         TEXT,                 -- SMS認証済みの電話番号（+8190…）。1番号1アカウント
   bonus_granted      INTEGER NOT NULL DEFAULT 0,
   deleted            INTEGER NOT NULL DEFAULT 0,
   created_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone_e164) WHERE phone_e164 IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash   TEXT PRIMARY KEY,

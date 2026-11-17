@@ -588,8 +588,8 @@
       <div class="toolbar2"><input id="mq" type="search" placeholder="名前・メール・電話で検索" value="${esc(memberQ)}" style="max-width:320px"><span class="small muted">会員 ${r.total.n}人・未使用ポイント合計 ${r.total.points.toLocaleString()}pt</span>
         <button class="btn sm" id="mcsv">CSV書き出し</button></div>
       <div class="panel overflow"><table class="t">
-        <tr><th>ID</th><th>お名前</th><th>メール</th><th>電話</th><th class="num">ポイント</th><th class="num">注文</th><th class="num">購入額</th><th>登録日</th><th></th></tr>
-        ${r.members.map(m => `<tr><td>${m.id}</td><td>${esc(m.name)}<br><span class="muted small">${esc(m.kana)}</span></td><td class="small">${esc(m.email)}</td><td class="small">${esc(m.phone)}</td><td class="num">${m.points.toLocaleString()}</td><td class="num">${m.orders}</td><td class="num">${yen(m.spent)}</td><td class="small">${jst(m.created_at, { year: 'numeric', month: 'numeric', day: 'numeric' })}</td><td><button class="link" data-m="${m.id}">詳細</button></td></tr>`).join('') || '<tr><td class="muted" colspan="9">会員はまだいません</td></tr>'}
+        <tr><th>ID</th><th>お名前</th><th>メール</th><th>電話</th><th>認証</th><th class="num">ポイント</th><th class="num">注文</th><th class="num">購入額</th><th>登録日</th><th></th></tr>
+        ${r.members.map(m => `<tr><td>${m.id}</td><td>${esc(m.name)}<br><span class="muted small">${esc(m.kana)}</span></td><td class="small">${esc(m.email)}</td><td class="small">${esc(m.phone)}</td><td class="small">${m.email_verified ? '✉︎' : ''}${m.phone_verified ? ' 📱' : ''}</td><td class="num">${m.points.toLocaleString()}</td><td class="num">${m.orders}</td><td class="num">${yen(m.spent)}</td><td class="small">${jst(m.created_at, { year: 'numeric', month: 'numeric', day: 'numeric' })}</td><td><button class="link" data-m="${m.id}">詳細</button></td></tr>`).join('') || '<tr><td class="muted" colspan="10">会員はまだいません</td></tr>'}
       </table></div>`;
     $('#mq').onchange = e => { memberQ = e.target.value; viewMembers(); };
     $('#mcsv').onclick = () => download(`members_${today()}.csv`, [['ID', 'お名前', 'フリガナ', 'メール', '電話', 'ポイント', '注文数', '購入額', '登録日', '最終ログイン'], ...r.members.map(m => [m.id, m.name, m.kana, m.email, m.phone, m.points, m.orders, m.spent, m.created_at, m.last_login_at || ''])]);
@@ -667,6 +667,7 @@
     ['priceHistory', '価格推移グラフ', ''],
     ['buyback', '買取価格の表示', '商品ページに「このカードを売る」'],
     ['restock', '入荷通知メール', 'メール送信の設定が必要'],
+    ['phoneVerify', '電話番号（SMS）認証', 'Twilio の設定が必要。1回20円前後'],
     ['shipbar', '即日発送カウントダウン', ''],
     ['bankPayment', '銀行振込', ''],
     ['cardPayment', 'カード決済', 'STRIPE_SECRET_KEY が必要'],
@@ -681,7 +682,7 @@
       <form id="sf">
         <div class="fs"><h3>接続状況</h3><div class="envs">
           <span class="${r.env.stripe ? 'on' : ''}">Stripe ${r.env.stripe ? '接続済み' : '未設定'}</span><span class="${r.env.webhook ? 'on' : ''}">Stripe Webhook ${r.env.webhook ? 'OK' : '未設定'}</span>
-          <span class="${r.env.mail ? 'on' : ''}">メール送信 ${r.env.mail ? 'OK' : '未設定'}</span><span class="${r.env.r2 ? 'on' : ''}">画像 ${r.env.r2 ? 'R2' : 'D1に保存'}</span></div>
+          <span class="${r.env.mail ? 'on' : ''}">メール送信 ${r.env.mail ? 'OK' : '未設定'}</span><span class="${r.env.sms ? 'on' : ''}">SMS認証 ${r.env.sms ? 'OK' : '未設定'}</span><span class="${r.env.totp ? 'on' : ''}">管理画面の2段階認証 ${r.env.totp ? 'OK' : '未設定'}</span><span class="${r.env.r2 ? 'on' : ''}">画像 ${r.env.r2 ? 'R2' : 'D1に保存'}</span></div>
           <p class="hint2">これらは秘密の値なので Cloudflare 側（wrangler secret）で設定します。README 参照。</p></div>
 
         <div class="fs"><h3>機能のON / OFF</h3><div class="feat">
@@ -717,8 +718,16 @@
           <p class="hint2">※オリパとポイントを循環させる仕組みは換金性が問題視されています。オフのままを推奨します。</p>
         </div>
 
+        <div class="fs"><h3>電話番号（SMS）認証</h3>
+          <p class="hint2">「機能のON / OFF」で電話番号認証をONにし、Twilio を設定すると有効になります。1つの電話番号は1アカウントだけ。日本の携帯番号（070/080/090）のみ受け付けます。</p>
+          <label class="check"><input type="checkbox" name="ph_forBonus" ${s.phone.forBonus ? 'checked' : ''}> 登録ボーナスは電話番号認証の後に付与する（複数アカウントでのボーナス取得を防ぐ）</label>
+          <label class="check"><input type="checkbox" name="ph_forOripa" ${s.phone.forOripa ? 'checked' : ''}> オリパの購入に電話番号認証を必須にする</label>
+        </div>
+
         <div class="fs"><h3>オリパ</h3>
           <label class="check"><input type="checkbox" name="o_requireLogin" ${s.oripa.requireLogin ? 'checked' : ''}> オリパの購入に会員登録を必須にする</label>
+          <label class="check"><input type="checkbox" name="o_showRecent" ${s.oripa.showRecent ? 'checked' : ''}> 販売ページに「最近の当選」を表示する</label>
+          <p class="hint2">お客様には賞ごとの封入数と総残り口数だけを表示し、賞ごとの残り数は表示しません（この管理画面でのみ確認できます）。</p>
           ${inp('o_maxPerOrder', '1注文の上限口数（全オリパ共通の上限）', s.oripa.maxPerOrder, 'number')}
           ${ta('o_notice', '注意事項（販売ページ・購入時の同意文）', s.oripa.notice, 2)}
           ${inp('o_ageNotice', '年齢の注意書き', s.oripa.ageNotice)}
@@ -759,7 +768,8 @@
         bankInfo: g('bankInfo'), paymentDays: g('paymentDays'),
         features: Object.fromEntries(FEATURE_LABELS.map(([k]) => [k, !!g('f_' + k)])),
         points: { rate: g('p_rate'), signupBonus: g('p_signupBonus'), expireDays: g('p_expireDays'), minUse: g('p_minUse'), grantOn: g('p_grantOn'), oripaEarn: !!g('p_oripaEarn'), oripaUse: !!g('p_oripaUse') },
-        oripa: { requireLogin: !!g('o_requireLogin'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), ageNotice: g('o_ageNotice') },
+        phone: { forBonus: !!g('ph_forBonus'), forOripa: !!g('ph_forOripa') },
+        oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), ageNotice: g('o_ageNotice') },
         categories: $$('#cats .r').map(r => ({ key: $('[data-ck]', r).value, label: $('[data-cl]', r).value })).filter(c => c.key && c.label),
         condGuide: $$('#conds .r').map(r => [$('[data-gk]', r).value, $('[data-gv]', r).value]).filter(x => x[0]),
         legal: { seller: g('l_seller'), manager: g('l_manager'), address: g('l_address'), phone: g('l_phone'), hours: g('l_hours'), email: g('l_email'), delivery: g('l_delivery'), returns: g('l_returns'), extra: g('l_extra') },

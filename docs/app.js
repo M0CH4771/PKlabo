@@ -435,7 +435,7 @@
     const pool = o.prizes.filter(p => !p.is_last_one);
     const lastOne = o.prizes.find(p => p.is_last_one);
     const expect = o.total ? Math.round(pool.reduce((s, p) => s + p.value * p.qty, 0) / o.total) : 0;
-    const remainValue = o.remaining ? Math.round(pool.reduce((s, p) => s + p.value * p.remaining, 0) / o.remaining) : 0;
+    const needPhone = config.phoneEnabled && config.phone.forOripa;
     const inCart = cart.oripa[o.id] || 0;
     const limit = Math.max(0, Math.min(o.max_per_order, config.oripa.maxPerOrder, o.remaining) - inCart);
     app.innerHTML = `
@@ -455,29 +455,29 @@
               <button class="btn primary" id="oadd" ${limit ? '' : 'disabled'}>カートに入れる</button>
             </div>
             ${inCart ? `<p class="small">カートに${inCart}口入っています。<a href="#/cart">カートを見る</a></p>` : ''}` : '<p class="danger"><b>このオリパは完売・終了しました</b></p>'}
-          <div class="oripa-note small">${esc(config.oripa.notice)}<br>${esc(config.oripa.ageNotice)}${config.oripa.requireLogin ? '<br>ご購入には会員登録（ログイン）が必要です。' : ''}<br>抽選は注文時にサーバーで行い、ご入金確認後に開封できます。</div>
+          <div class="oripa-note small">${esc(config.oripa.notice)}<br>${esc(config.oripa.ageNotice)}${config.oripa.requireLogin ? `<br>ご購入には会員登録（ログイン）${needPhone ? 'と電話番号認証' : ''}が必要です。` : ''}<br>抽選は注文時にサーバーで行い、ご入金確認後に開封できます。</div>
           ${o.description ? `<div class="desc">${esc(o.description).replace(/\n/g, '<br>')}</div>` : ''}
         </div>
       </div>
       <div class="box">
-        <h3>封入内容（リアルタイム）</h3>
-        <p class="small muted">全${o.total}口の中身をすべて公開しています。賞ごとの残り数と確率は、お支払いが確定した分から反映されます${o.pending ? `（お支払い待ち ${o.pending}口）` : ''}。</p>
+        <h3>封入内容</h3>
+        <p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>
         <div class="prizes">
           ${pool.map(p => `
-            <div class="prize ${p.remaining ? '' : 'out'}">
+            <div class="prize">
               ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
               <div class="pz-b"><span class="tag rank">${esc(p.rank)}</span> <b>${esc(p.name)}</b>
-                <div class="small muted">参考価格 ${yen(p.value)}　当選確率 ${o.remaining ? (p.remaining / o.remaining * 100).toFixed(p.remaining / o.remaining < 0.01 ? 2 : 1) : '0'}%</div></div>
-              <div class="pz-n"><b>${p.remaining}</b><span class="small muted">/${p.qty}</span></div>
+                <div class="small muted">参考価格 ${yen(p.value)}　封入率 ${o.total ? (p.qty / o.total * 100).toFixed(p.qty / o.total < 0.01 ? 2 : 1) : '0'}%</div></div>
+              <div class="pz-n"><b>${p.qty}</b><span class="small muted">口</span></div>
             </div>`).join('')}
           ${lastOne ? `
-            <div class="prize last ${lastOne.remaining ? '' : 'out'}">
+            <div class="prize last">
               ${lastOne.image_url ? `<img src="${esc(lastOne.image_url)}" alt="" loading="lazy">` : '<div class="noimg sm"></div>'}
               <div class="pz-b"><span class="tag rank lo">ラストワン賞</span> <b>${esc(lastOne.name)}</b><div class="small muted">最後の1口を引いた方に追加でプレゼント（参考価格 ${yen(lastOne.value)}）</div></div>
-              <div class="pz-n"><b>${lastOne.remaining}</b><span class="small muted">/1</span></div>
+              <div class="pz-n"><b>1</b><span class="small muted">個</span></div>
             </div>` : ''}
         </div>
-        <p class="small muted">1口あたりの参考価格の平均：全体 ${yen(expect)}${o.remaining ? ` ／ 残りの山 ${yen(remainValue)}` : ''}（参考価格は当店の目安です）</p>
+        <p class="small muted">1口あたりの参考価格の平均 ${yen(expect)}（参考価格は当店の目安です）</p>
       </div>
       ${o.recent.length ? `<div class="box"><h3>最近の当選</h3><div class="recent">${o.recent.map(r => `<div class="small"><span class="tag rank ${r.is_last_one ? 'lo' : ''}">${esc(r.is_last_one ? 'ラストワン' : r.rank)}</span> ${esc(r.name)} <span class="muted">${jst(r.revealed_at)}</span></div>`).join('')}</div></div>` : ''}`;
     const add = $('#oadd');
@@ -576,6 +576,11 @@
       app.innerHTML = `<a href="#/cart" class="back">← カートへ戻る</a><div class="box center"><h2>${olines.length && F_ON.guestCheckout ? 'オリパのご購入には会員登録が必要です' : 'ご購入には会員登録が必要です'}</h2>
         <p class="small">ログインまたは会員登録すると、購入手続きに進めます。${F_ON.points && config.points.signupBonus ? `<br>今なら登録で<b>${config.points.signupBonus}ポイント</b>プレゼント。` : ''}</p>
         <a class="btn primary" href="#/account?next=checkout">ログイン・会員登録</a></div>`;
+      return;
+    }
+    if (olines.length && config.phoneEnabled && config.phone.forOripa && me && !me.customer.phone_verified) {
+      app.innerHTML = `<a href="#/cart" class="back">← カートへ戻る</a><div class="box center"><h2>オリパのご購入には電話番号認証が必要です</h2>
+        <p class="small">マイページでSMS認証（1分ほど）を済ませてから、購入手続きにお進みください。</p><a class="btn primary" href="#/account?next=checkout">電話番号を認証する</a></div>`;
       return;
     }
     const prev = store.get('pk_customer', {});
@@ -793,7 +798,7 @@
         try {
           const r = await api(mode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: JSON.stringify(fd) });
           setToken(r.token); await refreshMe();
-          toast(mode === 'login' ? 'ログインしました' : r.verify_sent ? '登録しました。確認メールのリンクを開いてください' : `登録しました${F_ON.points && config.points.signupBonus ? `（${config.points.signupBonus}pt プレゼント）` : ''}`);
+          toast(mode === 'login' ? 'ログインしました' : r.verify_sent ? '登録しました。確認メールのリンクを開いてください' : r.phone_required ? '登録しました。マイページで電話番号を認証してください' : `登録しました${F_ON.points && config.points.signupBonus ? `（${config.points.signupBonus}pt プレゼント）` : ''}`);
           location.hash = next === 'checkout' ? '#/checkout' : '#/account';
         } catch (err) { const a = $('#aerr'); a.textContent = err.message; a.hidden = false; }
       };
@@ -805,6 +810,13 @@
     app.innerHTML = `
       <h1 class="h">マイページ</h1>
       ${!c.email_verified && config.mailEnabled ? `<div class="loginhint"><b>メールアドレスの確認がまだです。</b>${c.email} に届いたリンクを開いてください。${F_ON.points && config.points.signupBonus ? `確認すると登録ボーナス${config.points.signupBonus}ptが付きます。` : ''} <button class="link" id="resend">確認メールを再送</button></div>` : ''}
+      ${config.phoneEnabled ? (c.phone_verified ? `<p class="small ok">✓ 電話番号認証済み（${esc(c.phone_verified_number)}）</p>` : `
+        <div class="box" id="phonebox"><h3>電話番号認証（SMS）</h3>
+          <p class="small">${[config.phone.forBonus && F_ON.points && config.points.signupBonus ? `登録ボーナス${config.points.signupBonus}ptの受け取り` : '', config.phone.forOripa && F_ON.oripa ? 'オリパのご購入' : ''].filter(Boolean).join('・') || '安心してお取引いただくため'}に、携帯電話番号の認証をお願いしています。1つの番号は1アカウントでのみ使えます。</p>
+          <div class="row pts"><input id="ph" type="tel" inputmode="tel" placeholder="090-1234-5678" value="${esc(c.phone)}"><button class="btn sm primary" id="phsend">SMSを送る</button></div>
+          <div class="row pts" id="phcode" hidden><input id="phc" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="届いた6桁のコード"><button class="btn sm primary" id="phok">認証する</button></div>
+          <p class="small danger" id="pherr" hidden></p>
+        </div>`) : ''}
       ${F_ON.points ? `
       <div class="pointcard">
         <span class="small">保有ポイント</span><b>${c.points.toLocaleString()}<small>pt</small></b>
@@ -832,6 +844,24 @@
           <button class="btn primary">変更</button>
         </form></details>
       <div class="row-between"><button class="btn" id="logout">ログアウト</button><button class="link muted" id="withdraw">退会する</button></div>`;
+    const phs = $('#phsend');
+    if (phs) {
+      const perr = m => { const e = $('#pherr'); e.textContent = m; e.hidden = !m; };
+      phs.onclick = async () => {
+        perr(''); phs.disabled = true;
+        try { await api('/api/me/phone/send', { method: 'POST', body: JSON.stringify({ phone: $('#ph').value }) }); $('#phcode').hidden = false; $('#phc').focus(); toast('SMSを送りました'); phs.textContent = '再送する'; }
+        catch (err) { perr(err.message); }
+        setTimeout(() => (phs.disabled = false), 30000);
+      };
+      $('#phok').onclick = async () => {
+        perr('');
+        try {
+          const r = await api('/api/me/phone/verify', { method: 'POST', body: JSON.stringify({ phone: $('#ph').value, code: $('#phc').value }) });
+          toast(r.bonus ? `認証しました（${r.bonus}pt プレゼント）` : '電話番号を認証しました');
+          if (params.get('next') === 'checkout') { await refreshMe(); location.hash = '#/checkout'; } else viewAccount(params);
+        } catch (err) { perr(err.message); }
+      };
+    }
     const rsd = $('#resend'); if (rsd) rsd.onclick = async () => { try { await api('/api/auth/verify-resend', { method: 'POST' }); toast('確認メールを送りました'); } catch (err) { toast(err.message); } };
     $('#pf').onsubmit = async e => { e.preventDefault(); try { await api('/api/me', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('保存しました'); await refreshMe(); } catch (err) { toast(err.message); } };
     $('#pw').onsubmit = async e => { e.preventDefault(); try { await api('/api/me', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('パスワードを変更しました'); e.target.reset(); } catch (err) { toast(err.message); } };
@@ -965,7 +995,7 @@
       ${config.condGuide.length ? `<div class="box"><h3>状態表記</h3>${config.condGuide.map(([k, v]) => `<p>${condBadge(k)} ${esc(v)}</p>`).join('')}<p class="small muted">「実物写真」マークの商品は、お届けするカードそのものを撮影しています。</p></div>` : ''}
       <div class="box"><h3>発送について</h3><p class="small">${config.shipDays.map(d => '日月火水木金土'[d]).join('・')}曜日に発送しています。${config.shipCutoffHour}時までのカード決済・ご入金確認分は当日発送します。<br>送料${yen(config.shippingFee)}、${yen(config.freeShippingOver)}以上のご注文で送料無料。カードはスリーブ＋硬質ケースに入れ、防水して発送します。${config.pickupEnabled ? '<br>店頭受け取り（送料無料）もお選びいただけます。' : ''}</p></div>
       ${F_ON.points ? `<div class="box"><h3>ポイント</h3><p class="small">会員登録で${config.points.signupBonus}ポイント、お買い物金額の${config.points.rate}%をポイント還元（${config.points.grantOn === 'paid' ? '入金確認時' : '発送時'}に付与）。1ポイント＝1円としてお使いいただけます。${config.points.expireDays ? `最後にポイントが増減した日から${config.points.expireDays}日で失効します。` : ''}${config.points.oripaEarn ? '' : '<br>オリパのご購入分はポイント付与の対象外です。'}</p></div>` : ''}
-      ${F_ON.oripa ? `<div class="box"><h3>オリパ</h3><p class="small">${esc(config.oripa.notice)}<br>総口数・賞ごとの封入数・残り数はすべてリアルタイムで公開しています。抽選は注文時にサーバーで行い、ご入金確認後に開封できます。<br>${esc(config.oripa.ageNotice)}</p></div>` : ''}`;
+      ${F_ON.oripa ? `<div class="box"><h3>オリパ</h3><p class="small">${esc(config.oripa.notice)}<br>総口数・賞ごとの封入数と、全体の残り口数を公開しています。抽選は注文時にサーバーで行い、ご入金確認後に開封できます。<br>${esc(config.oripa.ageNotice)}</p></div>` : ''}`;
   }
 
   // ─── ルーター ───
