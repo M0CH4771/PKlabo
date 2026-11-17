@@ -712,14 +712,27 @@
             <label>住所<textarea name="address" rows="2">${esc(c.address)}</textarea></label>
             <label class="check"><input type="checkbox" name="save_address" checked> この住所を会員情報に保存する</label></div>
             <label>備考<textarea name="note" rows="2"></textarea></label>
-            <p class="small">発送料：${config.coin.shipFee ? `${config.coin.shipFee.toLocaleString()}${esc(config.coin.name)}` : '無料'}</p>
+            <div class="shipfee small" id="shipfee"></div>
             <button class="btn primary block" id="shipbtn">選んだカードの発送を依頼</button>
           </fieldset>
         </form>` : `<p class="muted pad center">まだ獲得カードはありません。<br><a class="btn" href="#/oripa">オリパを見る</a></p>`}`;
     if (!list.length) return;
-    const all = $('#all'); all.onchange = () => $$('.sel').forEach(x => x.checked = all.checked);
     const sf = $('#sf2');
-    $$('[name=ship]', sf).forEach(r => r.onchange = () => { $('#addr2').hidden = sf.ship.value === 'pickup'; });
+    // 発送料：選んだカードの販売金額（引いたときの1口の価格）の合計が基準以上なら無料
+    const cn = esc(config.coin.name);
+    const feeLine = () => {
+      const ids = new Set($$('.sel').filter(x => x.checked).map(x => +x.value));
+      const sale = list.filter(d => ids.has(d.id)).reduce((s, d) => s + (d.price || 0), 0);
+      const over = config.coin.freeShipOver, base = config.coin.shipFee;
+      const pickup = sf.ship && sf.ship.value === 'pickup';
+      const free = pickup || !base || (over > 0 && sale >= over);
+      $('#shipfee').innerHTML = `<div class="row-between"><span>選んだカード ${ids.size}枚（販売金額 ${sale.toLocaleString()}${cn}）</span><b>発送料：${free ? '無料' : `${base.toLocaleString()}${cn}`}</b></div>
+        ${base && over > 0 && !pickup ? (sale >= over ? `<p class="ok" style="margin:2px 0 0">販売金額${over.toLocaleString()}${cn}以上のため送料無料です</p>` : `<p class="muted" style="margin:2px 0 0">販売金額の合計が${over.toLocaleString()}${cn}以上で送料無料（あと${(over - sale).toLocaleString()}${cn}）</p><div class="fb-track"><i style="width:${Math.min(100, Math.round(sale / over * 100))}%"></i></div>`) : ''}`;
+    };
+    const all = $('#all'); all.onchange = () => { $$('.sel').forEach(x => x.checked = all.checked); feeLine(); };
+    $$('.sel').forEach(x => x.onchange = feeLine);
+    $$('[name=ship]', sf).forEach(r => r.onchange = () => { $('#addr2').hidden = sf.ship.value === 'pickup'; feeLine(); });
+    feeLine();
     sf.onsubmit = async e => {
       e.preventDefault();
       const ids = $$('.sel').filter(x => x.checked).map(x => +x.value);

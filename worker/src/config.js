@@ -60,6 +60,7 @@ export const DEFAULTS = {
     name: 'コイン',
     expireMonths: 6,      // 購入から失効までの月数（6以内なら資金決済法の前払式支払手段の対象外。0=期限なし）
     shipFee: 0,           // 当選品の発送依頼1回あたりの送料（コイン）
+    freeShipOver: 10000,  // 一緒に発送する当選品の販売金額（引いたときの1口の価格の合計）がこのコイン以上なら送料無料（0=使わない）
     packs: [              // 購入パック（価格円 → 付与コイン）
       { price: 1000, coins: 1000 },
       { price: 3000, coins: 3000 },
@@ -158,6 +159,7 @@ function finalize(c) {
   if (!['card', 'rank'].includes(c.oripa.boardReveal)) c.oripa.boardReveal = 'card';
   c.coin.expireMonths = Math.min(120, Math.max(0, c.coin.expireMonths));
   c.coin.shipFee = Math.max(0, c.coin.shipFee);
+  c.coin.freeShipOver = Math.max(0, c.coin.freeShipOver);
   c.coin.packs = (c.coin.packs || []).map(p => ({ price: int(p?.price), coins: int(p?.coins) }))
     .filter(p => p.price >= 100 && p.coins > 0 && p.coins <= p.price * 2).slice(0, 10);
   if (!c.coin.packs.length) c.coin.packs = clone(DEFAULTS.coin.packs);

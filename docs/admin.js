@@ -1053,7 +1053,7 @@
         </div>
 
         <div class="fs"><h3>コイン（オリパ用）</h3>
-          <div class="grid3">${inp('c_name', '名前', s.coin.name)}${inp('c_expireMonths', '有効期限（購入から何か月・0=無期限）', s.coin.expireMonths, 'number', 'min="0" max="120"')}${inp('c_shipFee', '当選品の発送料（コイン・0=無料）', s.coin.shipFee, 'number', 'min="0"')}</div>
+          <div class="grid3">${inp('c_name', '名前', s.coin.name)}${inp('c_expireMonths', '有効期限（購入から何か月・0=無期限）', s.coin.expireMonths, 'number', 'min="0" max="120"')}${inp('c_shipFee', '当選品の発送料（コイン・0=無料）', s.coin.shipFee, 'number', 'min="0"')}${inp('c_freeShipOver', '送料無料になる販売金額（コイン・0=使わない）', s.coin.freeShipOver, 'number', 'min="0"')}</div>
           <p class="hint2">有効期限を6か月以内にしておくと、資金決済法の「前払式支払手段」に当たらず、届出や供託が不要です。6か月を超える・無期限にする場合は、3月末・9月末の未使用残高が1,000万円を超えたら財務局への届出と残高の半額の供託が必要になります（ダッシュボードで残高を確認できます）。当選カードをコインに戻す機能はありません。</p>
           <b class="small">購入パック（価格 → 付与するコイン）</b>
           <div class="rows" id="packs">${s.coin.packs.map(p => `<div class="r"><input data-pp type="number" value="${p.price}" placeholder="価格（円）"><input data-pc type="number" value="${p.coins}" placeholder="付与コイン"><button type="button" class="link danger" data-x>削除</button></div>`).join('')}</div>
@@ -1118,7 +1118,7 @@
         features: Object.fromEntries(FEATURE_LABELS.map(([k]) => [k, !!g('f_' + k)])),
         points: { rate: g('p_rate'), signupBonus: g('p_signupBonus'), expireDays: g('p_expireDays'), minUse: g('p_minUse'), grantOn: g('p_grantOn'), oripaEarn: !!g('p_oripaEarn'), oripaUse: !!g('p_oripaUse') },
         phone: { forBonus: !!g('ph_forBonus'), forOripa: !!g('ph_forOripa') },
-        coin: { name: g('c_name'), expireMonths: g('c_expireMonths'), shipFee: g('c_shipFee'), packs: $$('#packs .r').map(r => ({ price: $('[data-pp]', r).value, coins: $('[data-pc]', r).value })).filter(p => p.price && p.coins) },
+        coin: { name: g('c_name'), expireMonths: g('c_expireMonths'), shipFee: g('c_shipFee'), freeShipOver: g('c_freeShipOver'), packs: $$('#packs .r').map(r => ({ price: $('[data-pp]', r).value, coins: $('[data-pc]', r).value })).filter(p => p.price && p.coins) },
         oripa: { requireLogin: !!g('o_requireLogin'), showRecent: !!g('o_showRecent'), showQty: !!g('o_showQty'), showValue: !!g('o_showValue'), boardReveal: g('o_boardReveal'), maxPerOrder: g('o_maxPerOrder'), notice: g('o_notice'), important: g('o_important'), ageNotice: g('o_ageNotice') },
         categories: $$('#cats .r').map(r => ({ key: $('[data-ck]', r).value, label: $('[data-cl]', r).value })).filter(c => c.key && c.label),
         condGuide: $$('#conds .r').map(r => [$('[data-gk]', r).value, $('[data-gv]', r).value]).filter(x => x[0]),

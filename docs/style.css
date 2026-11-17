@@ -680,3 +680,5 @@ body:has(.pickbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inse
 .important ul { margin: 10px 0 6px; padding-left: 1.2em; display: grid; gap: 6px; font-size: 12.5px; line-height: 1.7; }
 .important li::marker { color: var(--accent); }
 .jump-imp { color: var(--accent); font-weight: 700; }
+.shipfee { display: grid; gap: 4px; background: #f6f7f8; border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
+.shipfee .fb-track { margin-top: 4px; }

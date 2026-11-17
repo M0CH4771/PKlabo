@@ -423,7 +423,11 @@ async function createShipRequest(req, env) {
   const info = { name: str(cu.name, 100) || customer.name, phone: str(cu.phone, 30) || customer.phone, zip: str(cu.zip, 10), address: str(cu.address, 300), note: str(cu.note, 1000) };
   if (!info.name || !info.phone) throw new HttpError(400, 'お名前と電話番号を入力してください');
   if (!pickup && (!info.zip || !info.address)) throw new HttpError(400, '郵便番号と住所を入力してください');
-  const fee = c.coin.shipFee;
+  // 一緒に送る当選品の「販売金額」（その口を引いたときの1口の価格。ラストワン賞は0）の合計が基準以上なら送料無料
+  const sale = await env.DB.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN d.is_last_one = 1 THEN 0 ELSE o.price END), 0) AS v FROM oripa_draws d JOIN oripas o ON o.id = d.oripa_id WHERE d.id IN (${ids.map(() => '?').join(',')})`
+  ).bind(...ids).first();
+  const fee = pickup || (c.coin.freeShipOver > 0 && sale.v >= c.coin.freeShipOver) ? 0 : c.coin.shipFee;
   const used = fee > 0 ? await spendCoins(env, customer.id, fee, '当選品の発送料') : [];
   const orderNo = await newOrderNo(env);
   const token = crypto.randomUUID();

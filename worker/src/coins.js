@@ -175,7 +175,7 @@ export async function coinRoutes(req, env, path) {
     const cust = await getCustomer(req, env);
     if (!cust) throw new HttpError(401, 'ログインしてください');
     const { results } = await env.DB.prepare(
-      `SELECT d.id, d.is_last_one, d.created_at, p.rank, p.name, p.image_url, o.title
+      `SELECT d.id, d.is_last_one, d.created_at, p.rank, p.name, p.image_url, o.title, CASE WHEN d.is_last_one = 1 THEN 0 ELSE o.price END AS price
          FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id JOIN oripas o ON o.id = d.oripa_id
         WHERE d.customer_id = ? AND d.order_id IS NULL ORDER BY d.id DESC LIMIT 500`
     ).bind(cust.id).all();
