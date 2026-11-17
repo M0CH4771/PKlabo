@@ -501,7 +501,7 @@
     $$('[data-draw]').forEach(b => b.onclick = async () => {
       const agree = $('#oagree');
       if (agree && !agree.checked) { toast('注意事項への同意にチェックしてください'); agree.focus(); return; }
-      const n = +b.dataset.draw;
+      const n = nOf(b);
       $$('[data-draw]').forEach(x => x.disabled = true);
       try {
         const r = await api(`/api/oripas/${o.id}/draw`, { method: 'POST', body: JSON.stringify({ qty: n, agree: true }) });
@@ -513,16 +513,32 @@
       }
     });
 
+    // 「1回引く」「10回引く」「選択した回数引く」
+    function drawBtns(attr, lim) {
+      const cn = esc(config.coin.name);
+      if (!lim) return '';
+      const cost = k => `${(k * o.price).toLocaleString()}${cn}`;
+      const fixed = [1, 10].filter(k => k <= lim);
+      const def = Math.min(lim, 5);
+      const all = o.allin_under > 0 && o.remaining > 0 && o.remaining <= o.allin_under ? o.remaining : 0;
+      return `${all ? `<button type="button" class="btn primary block allin" ${attr}="all" ${coinBal < all * o.price ? 'disabled' : ''}><b>残り全部引く（${all}口${o.prizes.some(p => p.is_last_one) ? '・ラストワン賞つき' : ''}）</b><span class="small">${cost(all)}</span></button>` : ''}
+        <div class="drawbtns" style="margin-top:4px">${fixed.map(k => `<button type="button" class="btn ${k === 1 ? '' : 'primary'}" ${attr}="${k}" ${coinBal < k * o.price ? 'disabled' : ''}><b>${k}回引く</b><span class="small">${cost(k)}</span></button>`).join('')}</div>
+        ${lim > 1 ? `<div class="drawpick"><select id="dnum" aria-label="引く回数">${Array.from({ length: Math.min(lim, 100) }, (_, i) => i + 1).map(k => `<option value="${k}" ${k === def ? 'selected' : ''}>${k}回</option>`).join('')}</select>
+          <button type="button" class="btn primary" ${attr}="sel" id="dsel" ${coinBal < def * o.price ? 'disabled' : ''}><b>選択した回数引く</b><span class="small" id="dselc">${cost(def)}</span></button></div>` : ''}`;
+    }
+    const nOf = b => { const v = b.dataset.draw || b.dataset.rnd; return v === 'sel' ? +$('#dnum').value : v === 'all' ? o.remaining : +v; };
+    const dn = $('#dnum');
+    if (dn) dn.onchange = () => { const k = +dn.value; $('#dselc').textContent = `${(k * o.price).toLocaleString()}${config.coin.name}`; $('#dsel').disabled = coinBal < k * o.price; };
+
     // ── ボード形式（パックを選んで開ける） ──
     function pickPanel(o, lim) {
       const cn = esc(config.coin.name);
       if (!me) return `<div class="coinpanel"><p class="small">パックを選んで、${cn}で開けられます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして選ぶ</a></div>`;
-      const n = [1, 3, 5, 10].filter(k => k <= lim);
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
         <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
         <p class="small" style="margin:0">下のボードからパックを選んで開けられます（1回に${lim}個まで）。</p>
-        ${n.length ? `<div><span class="small">選ばずにランダムで引く</span><div class="drawbtns" style="margin-top:4px">${n.map(k => `<button type="button" class="btn ${k === 1 ? '' : 'primary'}" data-rnd="${k}" ${coinBal < k * o.price ? 'disabled' : ''}><b>${k}回引く</b><span class="small">${(k * o.price).toLocaleString()}${cn}</span></button>`).join('')}</div></div>` : ''}
+        <div><span class="small">選ばずにランダムで引く</span>${drawBtns('data-rnd', lim)}</div>
         ${coinBal < o.price ? `<p class="small danger" style="margin:0">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
       </div>`;
     }
@@ -560,7 +576,7 @@
     }
     if (pick) {
       paintBoard(o.board);
-      $$('[data-rnd]').forEach(b => b.onclick = () => openPacks({ qty: +b.dataset.rnd }, b));
+      $$('[data-rnd]').forEach(b => b.onclick = () => openPacks({ qty: nOf(b) }, b));
       const clr = $('#pbclear'); if (clr) clr.onclick = () => { picked.clear(); paintBoard(o.board); };
       const op = $('#pbopen');
       if (op) op.onclick = () => openPacks({ slots: [...picked].sort((a, b) => a - b) }, op);
@@ -592,12 +608,10 @@
     function coinPanel(o, lim) {
       const cn = esc(config.coin.name);
       if (!me) return `<div class="coinpanel"><p class="small">${cn}を購入して引くと、その場で結果が出ます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして引く</a></div>`;
-      const opts = [1, 3, 10].filter(n => n <= lim);
-      if (!opts.length && lim) opts.push(lim);
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
         <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
-        <div class="drawbtns">${opts.map(n => `<button class="btn ${n === 1 ? '' : 'primary'}" data-draw="${n}" ${coinBal < n * o.price ? 'disabled' : ''}><b>${n}回引く</b><span class="small">${(n * o.price).toLocaleString()}${cn}</span></button>`).join('')}</div>
+        ${drawBtns('data-draw', lim)}
         ${coinBal < o.price ? `<p class="small danger">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
       </div>`;
     }

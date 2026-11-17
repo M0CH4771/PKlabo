@@ -511,7 +511,8 @@
     $('#oexp').onclick = () => download(`oripa_${today()}.csv`, [ORIPA_COLS.map(c => c[1]), ...list.flatMap(o => o.prizes.map((p, i) => ORIPA_COLS.map(([k]) => {
       if (k === 'oripa_id') return o.id;
       if (k === 'title') return o.title;
-      if (i > 0 && ['price', 'status', 'max_per_order', 'pick_mode', 'banner', 'description'].includes(k)) return '';
+      if (i > 0 && ['price', 'status', 'max_per_order', 'pick_mode', 'allin_under', 'banner', 'description'].includes(k)) return '';
+      if (k === 'allin_under') return o.allin_under || '';
       if (k === 'pick_mode') return o.pick_mode ? '○' : '';
       if (k === 'price') return o.price;
       if (k === 'status') return { draft: '下書き', live: '販売中', ended: '終了' }[o.status];
@@ -543,7 +544,7 @@
 
 
   const unitPrice = n => settings?.features?.coins ? `${Number(n).toLocaleString()}${esc(settings.coin.name)}` : yen(n);
-  const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['pick_mode', 'パックを選ぶ'], ['banner', 'バナー画像URL'], ['description', '説明'],
+  const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['pick_mode', 'パックを選ぶ'], ['allin_under', '残り全部引く'], ['banner', 'バナー画像URL'], ['description', '説明'],
     ['rank', 'ランク'], ['name', '賞品名'], ['qty', '封入数'], ['value', '参考価格'], ['image_url', '賞品画像URL'], ['is_last_one', 'ラストワン'], ['product_id', '商品ID'], ['card_no', '型番'], ['condition', '商品の状態']];
   const ORIPA_ALIAS = Object.fromEntries([...ORIPA_COLS.map(([k, l]) => [l, k]), ...ORIPA_COLS.map(([k]) => [k, k]),
     ['タイトル', 'title'], ['価格', 'price'], ['賞', 'rank'], ['枚数', 'qty'], ['口数', 'qty'], ['画像URL', 'image_url'], ['LO', 'is_last_one'], ['状態（商品）', 'condition']]);
@@ -627,7 +628,7 @@
         ['', '', '', '', '', '', '', 'A賞', '', 2, '', '', '', pick.id || '', '', ''],
         ['', '', '', '', '', '', '', 'B賞', '', 3, '', '', '', '', pick.card_no || '201/165', pick.condition || 'A'],
         ['', '', '', '', '', '', '', 'C賞', 'SAR 1枚', 94, 1200, '', '', '', '', ''],
-        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']].map((r, i) => i === 0 ? r : [...r.slice(0, 5), '', ...r.slice(5)]));
+        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']].map((r, i) => i === 0 ? r : [...r.slice(0, 5), '', i === 1 ? 10 : '', ...r.slice(5)]));
     };
     $('#ofile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
@@ -649,6 +650,7 @@
         const newGroup = (o.title && (!g || g.title !== o.title)) || (o.oripa_id && (!g || String(g.id || '') !== o.oripa_id));
         if (newGroup || !g) { g = { title: o.title || '', id: o.oripa_id ? +o.oripa_id : null, line, prizes: [] }; groups.push(g); }
         for (const [k, kk] of [['price', 'price'], ['max_per_order', 'max_per_order'], ['banner', 'image_url'], ['description', 'description']]) if (o[k] && g[kk] === undefined) g[kk] = o[k];
+        if (o.allin_under && g.allin_under === undefined) g.allin_under = +o.allin_under || 0;
         if (o.pick_mode && g.pick_mode === undefined) g.pick_mode = /^(1|true|○|〇|はい|yes)$/i.test(o.pick_mode);
         if (o.status && !g.status) g.status = /販売|live|公開/i.test(o.status) ? 'live' : /終了|ended/i.test(o.status) ? 'ended' : 'draft';
         if (!o.name && !o.product_id && !o.card_no && !o.qty) return; // 賞のない行（オリパの項目だけ）
@@ -686,7 +688,7 @@
         const res = [];
         for (const g of groups) {
           let cur = null;
-          let body = { title: g.title, price: g.price, status: g.status || 'draft', max_per_order: g.max_per_order || 10, pick_mode: g.pick_mode, image_url: g.image_url || '', description: g.description || '', prizes: g.prizes };
+          let body = { title: g.title, price: g.price, status: g.status || 'draft', max_per_order: g.max_per_order || 10, pick_mode: g.pick_mode, allin_under: g.allin_under, image_url: g.image_url || '', description: g.description || '', prizes: g.prizes };
           if (g.id) {
             cur = (await api('/api/admin/oripas')).find(o => o.id === g.id);
             if (!cur) { res.push(`ID ${g.id}：見つかりません`); continue; }
@@ -828,7 +830,9 @@
           <label>販売開始（任意）<input name="starts_at" type="datetime-local" value="${toLocalInput(v.starts_at)}"></label>
           <label>販売終了（任意）<input name="ends_at" type="datetime-local" value="${toLocalInput(v.ends_at)}"></label>
           <label>表示順<input name="sort" type="number" value="${esc(v.sort || 0)}"></label>
+          <label>「残り全部引く」を出す残り口数<input name="allin_under" type="number" min="0" inputmode="numeric" value="${esc(v.allin_under || 0)}" placeholder="0=出さない"></label>
         </div>
+        <p class="hint2" style="margin:-6px 0 0">「残り全部引く」：残りがこの口数以下になると、1回の上限口数に関係なく残りを全部まとめて引けるボタンが出ます（コインで引くとき）。0なら出しません。</p>
         <label class="check"><input type="checkbox" name="pick_mode" ${v.pick_mode ? 'checked' : ''} ${locked ? 'disabled' : ''}> お客様がパックを選んで開ける（ボード形式）</label>
         <p class="hint2" style="margin:-6px 0 0">総口数ぶんのパックがボードに並び、お客様が番号を選んで開けます。開けられたパックには中身が表示されます。中身は開けた瞬間に抽選するので、どのパックを選んでも確率は同じです。「オリパをコインで引く」がONのときだけ使えます（2,000口まで）。${locked ? '販売開始後は変更できません。' : ''}</p>
         <div><b class="small">バナー画像</b><div class="imgs" id="oimg"></div></div>

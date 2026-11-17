@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS oripas (
   ends_at        TEXT,
   sort           INTEGER NOT NULL DEFAULT 0,
   pick_mode      INTEGER NOT NULL DEFAULT 0,     -- 1=お客様がパックを選んで開ける（ボード形式・コインで引くときだけ）
+  allin_under    INTEGER NOT NULL DEFAULT 0,     -- 残りがこの口数以下になったら「残り全部引く」を出す（0=出さない）
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );

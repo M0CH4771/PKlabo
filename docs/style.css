@@ -420,7 +420,7 @@ details.box summary { cursor: pointer; }
 
 /* ── コイン ── */
 .coinpanel { background: #fff; border: 2px solid var(--ink); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; margin: 10px 0 12px; }
-.drawbtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; }
+.drawbtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
 .drawbtns .btn { display: grid; gap: 1px; padding: 11px 8px; }
 .drawbtns .btn b { font-size: 16px; }
 .pointcard.coin { background: var(--pop); }
@@ -568,3 +568,8 @@ body:has(.pickbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inse
 .pickbar .btn { padding: 10px 12px; }
 .op-no { font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--muted); }
 .op-back .op-no { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; color: #fff; font-size: 12px; }
+.drawpick { display: flex; gap: 8px; margin-top: 8px; }
+.drawpick select { flex: none; font-size: 16px; padding: 10px 28px 10px 12px; }
+.drawpick .btn { flex: 1; display: grid; gap: 1px; padding: 10px 8px; }
+.btn.block.allin { display: grid; gap: 1px; margin: 4px 0 2px; }
+.btn.allin b { font-size: 15.5px; }

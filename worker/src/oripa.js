@@ -33,7 +33,7 @@ function publicOripa(o, prizes) {
   return {
     id: o.id, title: o.title, image_url: o.image_url, description: o.description, price: o.price,
     total: o.total, sold: o.sold, remaining: o.total - o.sold, max_per_order: o.max_per_order,
-    status: o.status, open: isOpen(o) && o.sold < o.total, starts_at: o.starts_at, ends_at: o.ends_at, prizes: prizes || [], pick_mode: o.pick_mode ? 1 : 0,
+    status: o.status, open: isOpen(o) && o.sold < o.total, starts_at: o.starts_at, ends_at: o.ends_at, prizes: prizes || [], pick_mode: o.pick_mode ? 1 : 0, allin_under: o.allin_under || 0,
   };
 }
 
@@ -238,6 +238,7 @@ export async function adminOripaRoutes(req, env, path) {
       status: ['draft', 'live', 'ended'].includes(b.status) ? b.status : 'draft',
       starts_at: b.starts_at ? toSql(new Date(b.starts_at)) : null, ends_at: b.ends_at ? toSql(new Date(b.ends_at)) : null, sort: int(b.sort),
       pick_mode: truthy(b.pick_mode) ? 1 : 0,
+      allin_under: Math.max(0, Math.min(100000, int(b.allin_under))),
     };
     if (!meta.title) throw new HttpError(400, 'タイトルを入力してください');
     if (meta.price <= 0) throw new HttpError(400, '1口の価格を入力してください');
@@ -250,8 +251,8 @@ export async function adminOripaRoutes(req, env, path) {
 
     if (!id) {
       const r = await env.DB.prepare(
-        `INSERT INTO oripas (title, image_url, description, price, total, sold, status, max_per_order, starts_at, ends_at, sort, pick_mode) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
-      ).bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode).run();
+        `INSERT INTO oripas (title, image_url, description, price, total, sold, status, max_per_order, starts_at, ends_at, sort, pick_mode, allin_under) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, meta.allin_under).run();
       const oid = r.meta.last_row_id;
       if (prizes.length) await env.DB.batch(prizes.map(p => env.DB.prepare(
         'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -271,8 +272,8 @@ export async function adminOripaRoutes(req, env, path) {
       });
       if (!same) throw new HttpError(400, '販売が始まったオリパは、賞品の追加・削除・封入数の変更ができません（公平性のため）');
       await env.DB.batch([
-        env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, updated_at=datetime('now') WHERE id=?`)
-          .bind(meta.title, meta.image_url, meta.description, cur.price, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, id),
+        env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, allin_under=?, updated_at=datetime('now') WHERE id=?`)
+          .bind(meta.title, meta.image_url, meta.description, cur.price, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.allin_under, id),
         // 販売開始後は形式（ボード形式かどうか）も変えない
         ...prizes.map(p => env.DB.prepare('UPDATE oripa_prizes SET rank=?, name=?, image_url=?, value=?, sort=? WHERE id=? AND oripa_id=?').bind(p.rank, p.name, p.image_url, p.value, p.sort, p.id, id)),
       ]);
@@ -280,8 +281,8 @@ export async function adminOripaRoutes(req, env, path) {
       return json({ id, note: notes.length ? `販売開始後のため${notes.join('・')}は変更していません` : undefined });
     }
     await env.DB.batch([
-      env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, total=?, sold=0, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, pick_mode=?, updated_at=datetime('now') WHERE id=?`)
-        .bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, id),
+      env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, total=?, sold=0, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, pick_mode=?, allin_under=?, updated_at=datetime('now') WHERE id=?`)
+        .bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, meta.allin_under, id),
       env.DB.prepare('DELETE FROM oripa_prizes WHERE oripa_id = ?').bind(id),
       ...prizes.map(p => env.DB.prepare(
         'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'

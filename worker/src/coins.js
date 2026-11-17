@@ -126,7 +126,10 @@ export async function coinRoutes(req, env, path) {
       if (n > 0 && slots.length < n) throw new HttpError(409, `残りのパックは${slots.length}個です`);
     }
     const qty = o.pick_mode ? slots.length : int(b.qty);
-    const limit = Math.min(o.max_per_order || 9999, c.oripa.maxPerOrder);
+    const remaining = o.total - o.sold;
+    // 残りが設定の口数以下になったら、上限を超えても「残り全部」を一度に引ける
+    const allIn = o.allin_under > 0 && remaining <= o.allin_under && qty === remaining;
+    const limit = allIn ? remaining : Math.min(o.max_per_order || 9999, c.oripa.maxPerOrder);
     if (qty < 1 || qty > limit) throw new HttpError(400, `1回に${o.pick_mode ? '開けられる' : '引ける'}のは${limit}口までです`);
     if (slots) {
       const taken = await env.DB.prepare(`SELECT slot FROM oripa_draws WHERE oripa_id = ? AND slot IN (${slots.map(() => '?').join(',')})`).bind(o.id, ...slots).all();
