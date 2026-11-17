@@ -208,7 +208,7 @@ function cleanPrize(p) {
 export async function adminOripaRoutes(req, env, path) {
   const m = req.method;
   if (path === '/api/admin/oripas' && m === 'GET') {
-    const { results } = await env.DB.prepare('SELECT * FROM oripas ORDER BY id DESC').all();
+    const { results } = await env.DB.prepare(`SELECT * FROM oripas WHERE status != 'deleted' ORDER BY id DESC`).all();
     const ids = results.map(o => o.id);
     const pz = {};
     if (ids.length) {
@@ -246,7 +246,7 @@ export async function adminOripaRoutes(req, env, path) {
       return json({ id: oid }, 201);
     }
 
-    const cur = await env.DB.prepare('SELECT * FROM oripas WHERE id = ?').bind(id).first();
+    const cur = await env.DB.prepare(`SELECT * FROM oripas WHERE id = ? AND status != 'deleted'`).bind(id).first();
     if (!cur) throw new HttpError(404, 'オリパが見つかりません');
     const drawn = await env.DB.prepare('SELECT COUNT(*) AS n FROM oripa_draws WHERE oripa_id = ?').bind(id).first();
     const { results: curPrizes } = await env.DB.prepare('SELECT * FROM oripa_prizes WHERE oripa_id = ?').bind(id).all();
@@ -279,7 +279,12 @@ export async function adminOripaRoutes(req, env, path) {
   if (mm && m === 'DELETE') {
     const id = int(mm[1]);
     const drawn = await env.DB.prepare('SELECT COUNT(*) AS n FROM oripa_draws WHERE oripa_id = ?').bind(id).first();
-    if (drawn.n > 0) throw new HttpError(400, '販売実績があるため削除できません。終了にしてください');
+    if (drawn.n > 0) {
+      // 販売実績があるものは、ショップと管理画面の一覧から消すだけ。
+      // 当選カード・注文・獲得カードBOX・発送依頼はそのまま使えるように、賞品と抽選の記録は残す
+      await env.DB.prepare(`UPDATE oripas SET status = 'deleted', updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+      return json({ ok: true, archived: true });
+    }
     await env.DB.batch([env.DB.prepare('DELETE FROM oripa_prizes WHERE oripa_id = ?').bind(id), env.DB.prepare('DELETE FROM oripas WHERE id = ?').bind(id)]);
     return json({ ok: true });
   }

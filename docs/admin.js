@@ -493,7 +493,7 @@
           <div class="obar" style="margin:6px 0"><i style="width:${o.total ? Math.round((o.total - o.sold) / o.total * 100) : 0}%"></i></div>
           <div class="small muted">${o.prizes.map(p => `${esc(p.is_last_one ? 'ラストワン' : p.rank)} ${esc(p.name)} ${p.remaining}/${p.qty}`).join('<br>')}</div>
           <div class="toolbar2" style="margin:8px 0 0"><button class="btn sm" data-eo="${o.id}">編集</button><button class="btn sm" data-dr="${o.id}">当選履歴</button><button class="btn sm" data-test="${o.id}">試し引き</button>
-          ${o.status !== 'ended' && o.sold ? `<button class="btn sm" data-end="${o.id}">販売終了</button>` : ''}</div></div>`;
+          ${o.status !== 'ended' && o.sold ? `<button class="btn sm" data-end="${o.id}">販売終了</button>` : ''}<button class="link danger" data-odel="${o.id}" style="margin-left:auto">削除</button></div></div>`;
       }).join('') || '<p class="muted pad">まだオリパはありません</p>'}</div>`;
     $('#newo').onclick = () => editOripa(null);
     $('#ocsv').onclick = () => importOripaCsv();
@@ -516,6 +516,7 @@
       const o = list.find(x => x.id === +b.dataset.end);
       try { await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify({ ...o, starts_at: o.starts_at ? new Date(o.starts_at.replace(' ', 'T') + 'Z').toISOString() : '', ends_at: o.ends_at ? new Date(o.ends_at.replace(' ', 'T') + 'Z').toISOString() : '', status: 'ended' }) }); viewOripa(); } catch (e) { toast(e.message); }
     });
+    $$('[data-odel]').forEach(b => b.onclick = () => deleteOripa(list.find(x => x.id === +b.dataset.odel), viewOripa));
     $$('[data-test]').forEach(b => b.onclick = () => { const o = list.find(x => x.id === +b.dataset.test); testDraw(o.title, o.price, o.prizes, true); });
     $$('[data-dr]').forEach(b => b.onclick = async () => {
       const rows = await api(`/api/admin/oripas/${b.dataset.dr}/draws`);
@@ -811,7 +812,7 @@
         <div><b class="small">バナー画像</b><div class="imgs" id="oimg"></div></div>
         <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
         <div class="fs" style="background:var(--bg)"><h3>封入内容</h3><p class="hint2">ハズレ枠も「C賞 ノーマル5枚」のように賞品として登録してください（総口数＝封入数の合計）。LO＝ラストワン賞（最後の1口を引いた人に追加でプレゼント）。</p><div class="rows" id="prz"></div></div>
-        <div class="row-between"><span>${o && !o.sold ? '<button type="button" class="link danger" id="odel">削除</button>' : ''}</span>
+        <div class="row-between"><span>${o ? '<button type="button" class="link danger" id="odel">削除</button>' : ''}</span>
           <div style="display:flex;gap:8px"><button type="button" class="btn" id="otest">試し引き</button><button type="button" class="btn" id="ocancel">閉じる</button><button class="btn primary">保存</button></div></div>
       </form>`;
     const drawImg = () => {
@@ -825,7 +826,7 @@
     $('#of').price.oninput = draw;
     $('#ocancel').onclick = () => d.close();
     $('#otest').onclick = () => testDraw($('#of').title.value || '（無題）', +$('#of').price.value || 0, prizes, false);
-    const od = $('#odel'); if (od) od.onclick = async () => { if (!confirm('削除しますか？')) return; try { await api(`/api/admin/oripas/${o.id}`, { method: 'DELETE' }); d.close(); viewOripa(); } catch (e) { toast(e.message); } };
+    const od = $('#odel'); if (od) od.onclick = () => deleteOripa(o, () => { d.close(); viewOripa(); });
     $('#of').onsubmit = async e => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
@@ -833,6 +834,14 @@
       if (body.status === 'live' && prizes.some(p => !p.name)) { toast('賞品名が空の行があります'); return; }
       try { const r = await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify(body) }); d.close(); toast(r.note || '保存しました'); viewOripa(); } catch (err) { toast(err.message); }
     };
+  }
+
+  async function deleteOripa(o, after) {
+    const msg = o.sold
+      ? `「${o.title}」を削除しますか？\n\nショップと管理画面の一覧から消えます。販売済みの分（注文・当選カード・お客様の獲得カード・発送依頼）はそのまま残り、獲得カードの発送もこれまでどおりできます。${o.status === 'live' && o.sold < o.total ? '\n\n残りの口はこの時点で販売されなくなります。' : ''}`
+      : `「${o.title}」を削除しますか？（元に戻せません）`;
+    if (!confirm(msg)) return;
+    try { await api(`/api/admin/oripas/${o.id}`, { method: 'DELETE' }); toast('削除しました'); after(); } catch (e) { toast(e.message); }
   }
 
   // ─── 会員 ───
