@@ -2,55 +2,60 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data: blob:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-src 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>管理画面</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@500;700&display=swap">
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <style>
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; scrollbar-width: none; }
-  .tabs button { flex: none; border: 1px solid var(--line); background: #fff; padding: 8px 16px; border-radius: 999px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .tabs { border-bottom: 2px solid var(--ink); gap: 2px; margin-bottom: 16px; }
+  .tabs button { flex: none; border: 1px solid var(--line2); border-bottom: none; background: #fff; padding: 8px 14px; border-radius: 3px 3px 0 0; font-weight: 700; cursor: pointer; font-family: inherit; color: var(--ink); }
   .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
   .tabs .badge { position: static; display: inline-grid; margin-left: 4px; }
-  .panel { background: #fff; border-radius: var(--radius); padding: 14px; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
   .orders { display: grid; gap: 10px; }
-  .order { background: #fff; border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
-  .order .items { font-size: 13px; background: var(--bg); padding: 8px 10px; border-radius: 8px; }
+  .order { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--ink); border-radius: 3px; padding: 12px 14px; display: grid; gap: 6px; }
+  .order .items { font-size: 13px; background: #f4f5f7; padding: 8px 10px; border-radius: 2px; }
   .order .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .order input.trk { width: 170px; padding: 6px 10px; font-size: 14px; }
   .order select { padding: 6px 26px 6px 10px; font-size: 13px; }
   .order textarea { font-size: 13px; padding: 6px 10px; }
   .order .sel { display: flex; align-items: center; gap: 8px; }
-  .hint { background: #fff8e1; border-radius: 6px; padding: 4px 8px; font-size: 12.5px; }
-  .pill { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: #eef2fb; color: var(--blue); }
+  .hint { background: #fff8cc; border-radius: 2px; padding: 4px 8px; font-size: 12.5px; }
+  .pill { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 2px; border: 1px solid currentColor; color: var(--blue); background: #fff; }
   table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
   .t th, .t td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-  .t th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .t th { font-size: 12px; color: var(--muted); font-weight: 700; white-space: nowrap; border-bottom: 2px solid var(--ink); }
   .t td.num, .t th.num { text-align: right; white-space: nowrap; }
   tr.off td { opacity: .45; }
   .thumb { width: 36px; aspect-ratio: 5/7; object-fit: contain; background: #f0f0f2; border-radius: 4px; }
   .stockctl { display: inline-flex; align-items: center; gap: 4px; }
-  .stockctl button { width: 26px; height: 26px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
-  dialog.ed { border: none; border-radius: var(--radius); padding: 0; width: min(620px, 96vw); }
+  .stockctl button { width: 26px; height: 26px; border: 1px solid var(--line2); background: #fff; border-radius: 2px; cursor: pointer; font-family: inherit; }
+  dialog.ed { border: none; border-top: 4px solid var(--ink); border-radius: var(--radius); padding: 0; width: min(620px, 96vw); }
   dialog.ed form { padding: 18px; display: grid; gap: 10px; max-height: 90vh; overflow-y: auto; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
   .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
-  .stat { background: #fff; border-radius: 12px; padding: 12px 14px; }
-  .stat b { display: block; font-size: 22px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 3px; padding: 10px 14px; }
+  .stat b { display: block; font-family: var(--f-pop); font-weight: 400; font-size: 22px; line-height: 1.4; }
   .stat .sub2 { font-size: 12px; color: var(--muted); }
   .overflow { overflow-x: auto; }
   .imgs { display: flex; flex-wrap: wrap; gap: 8px; }
   .imgs .im { position: relative; width: 70px; }
-  .imgs img { width: 70px; aspect-ratio: 5/7; object-fit: cover; border-radius: 6px; background: #eee; }
+  .imgs img { width: 70px; aspect-ratio: 5/7; object-fit: cover; border-radius: 3px; background: #eee; }
   .imgs .im button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: none; background: var(--ink); color: #fff; cursor: pointer; font-size: 12px; }
   .imgs .im .main { position: absolute; bottom: 2px; left: 2px; font-size: 9px; background: var(--accent); color: #fff; padding: 0 4px; border-radius: 3px; }
-  .upl { width: 70px; aspect-ratio: 5/7; border: 2px dashed var(--line); border-radius: 6px; display: grid; place-items: center; font-size: 11px; color: var(--muted); cursor: pointer; text-align: center; }
+  .upl { width: 70px; aspect-ratio: 5/7; border: 1px dashed var(--line2); border-radius: 3px; background: #fff; display: grid; place-items: center; font-size: 11px; color: var(--muted); cursor: pointer; text-align: center; }
   .upl input { display: none; }
   .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 10px; }
-  .bars div { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+  .bars div { flex: 1; background: var(--ink); min-height: 2px; position: relative; }
+  .bars div:hover { background: var(--accent); }
   .bars div:hover::after { content: attr(data-t); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
   .two { display: grid; gap: 12px; }
   @media (min-width: 800px) { .two { grid-template-columns: 1fr 1fr; } }
@@ -74,13 +79,13 @@
   .envs { display: flex; flex-wrap: wrap; gap: 6px; }
   .envs span { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eee; }
   .envs span.on { background: #e1f3e8; color: var(--ok); }
-  .prog { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; } .prog i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  .prog { height: 6px; background: var(--bg); overflow: hidden; } .prog i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
   .vtable input { padding: 6px 8px; font-size: 14px; }
 </style>
 </head>
 <body>
 <header class="site-header">
-  <a href="admin.html" class="logo"><span class="logo-mark">PK</span><span class="logo-text">管理画面<small>ADMIN</small></span></a>
+  <a href="admin.html" class="logo"><span class="logo-mark">PK</span><span class="logo-text">管理画面</span></a>
   <button class="btn sm" id="logout" hidden>ログアウト</button>
 </header>
 <main class="container" id="app"></main>

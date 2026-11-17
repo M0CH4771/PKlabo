@@ -143,7 +143,7 @@
     const s = shipInfo(); const bar = $('#shipbar');
     if (!s) { bar.hidden = true; return; }
     bar.hidden = false;
-    bar.innerHTML = `<span>🚚</span><span>${s.text}</span><span class="ship-free">${yen(config.freeShippingOver)}以上 送料無料${config.pickupEnabled ? '・店頭受取OK' : ''}${F_ON.points ? `・${config.points.rate}%ポイント還元` : ''}</span>`;
+    bar.innerHTML = `<span>${s.text}</span><span class="ship-free">${yen(config.freeShippingOver)}以上 送料無料${config.pickupEnabled ? '・店頭受取OK' : ''}${F_ON.points ? `・${config.points.rate}%ポイント還元` : ''}</span>`;
   }
   setInterval(() => config && renderShipbar(), 30000);
 
@@ -170,8 +170,8 @@
     return `
       <article class="pcard ${p.stock <= 0 ? 'soldout' : ''}">
         <a href="#/p/${p.id}" class="pimg">${cardImage(p)}
-          <span class="ribbons">${rank ? `<span class="rk rk${rank}">${rank}</span>` : ''}${offPct(p) ? '<span class="rb sale">SALE</span>' : ''}${isNew(p) ? '<span class="rb new">NEW</span>' : ''}${p.real_photo ? '<span class="rb photo">実物写真</span>' : ''}</span>
-          ${p.stock <= 0 ? '<span class="sold">SOLD OUT</span>' : ''}</a>
+          <span class="ribbons">${rank ? `<span class="rk rk${rank}">${rank}</span>` : ''}${offPct(p) ? '<span class="rb sale">値下げ</span>' : ''}${isNew(p) ? '<span class="rb new">新入荷</span>' : ''}${p.real_photo ? '<span class="rb photo">実物写真</span>' : ''}</span>
+          ${p.stock <= 0 ? '<span class="sold">売り切れ</span>' : ''}</a>
         ${F_ON.favorites ? `<button class="favbtn ${fav.has(p.id) ? 'on' : ''}" data-fav="${p.id}" aria-label="お気に入り">♥</button>` : ''}
         <div class="pbody">
           <a href="#/p/${p.id}" class="pname">${esc(p.name)}</a>
@@ -261,9 +261,9 @@
 
     app.innerHTML = `
       <div class="searchbar"><input id="q" type="search" placeholder="カード名・型番・弾で検索（ひらがなOK）" value="${esc(F.q)}" autocomplete="off" enterkeyhint="search"></div>
-      <div class="chips">${cats.map(c => `<button class="chip ${F.cat === c.key ? 'on' : ''}" data-cat="${esc(c.key)}">${esc(c.label)}</button>`).join('')}${F_ON.oripa ? '<a class="chip oripa-chip" href="#/oripa">🎁 オリパ</a>' : ''}</div>
-      ${home && F_ON.members && !me && F_ON.points && config.points.signupBonus ? `<a href="#/account" class="promo red"><b>会員登録で${config.points.signupBonus}ポイントプレゼント</b><span>お買い物で${config.points.rate}%ポイント還元・1pt＝1円で使えます →</span></a>` : ''}
-      ${home && F_ON.deck ? `<a href="#/deck" class="promo"><b>デッキリストを貼るだけで一括購入</b><span>在庫から一番安い組み合わせを自動でカートへ →</span></a>` : ''}
+      <div class="chips">${cats.map(c => `<button class="chip ${F.cat === c.key ? 'on' : ''}" data-cat="${esc(c.key)}">${esc(c.label)}</button>`).join('')}${F_ON.oripa ? '<a class="chip oripa-chip" href="#/oripa">オリパ</a>' : ''}</div>
+      ${home && F_ON.members && !me && F_ON.points && config.points.signupBonus ? `<a href="#/account" class="promo red"><b>会員登録で${config.points.signupBonus}ポイントプレゼント</b><span>お買い物で${config.points.rate}%ポイント還元・1pt＝1円で使えます</span></a>` : ''}
+      ${home && F_ON.deck ? `<a href="#/deck" class="promo"><b>デッキリストを貼るだけで一括購入</b><span>在庫から一番安い組み合わせを自動でカートへ</span></a>` : ''}
       ${liveOripas.length ? `<section class="strip"><div class="strip-h"><h2>販売中のオリパ</h2><a class="link" href="#/oripa">すべて見る</a></div><div class="strip-row wide">${liveOripas.map(oripaCard).join('')}</div></section>` : ''}
       ${strip('売れ筋ランキング', ranking, 'popular', true)}
       ${strip('値下げ・セール', sale, 'off')}
@@ -360,7 +360,7 @@
       <div class="detail">
         <div class="gallery">
           <div class="gmain">${imgs.length ? `<img id="gimg" src="${esc(imgs[0])}" alt="${esc(p.name)}">` : '<div class="noimg"><span>NO IMAGE</span></div>'}
-            ${p.real_photo ? '<span class="rb photo big">実物写真</span>' : ''}${p.stock <= 0 ? '<span class="sold">SOLD OUT</span>' : ''}</div>
+            ${p.real_photo ? '<span class="rb photo big">実物写真</span>' : ''}${p.stock <= 0 ? '<span class="sold">売り切れ</span>' : ''}</div>
           ${imgs.length > 1 ? `<div class="thumbs">${imgs.map((u, i) => `<button class="${i ? '' : 'on'}" data-img="${esc(u)}"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join('')}</div>` : ''}
           <p class="muted small">${p.real_photo ? 'この商品は実物を撮影した写真を掲載しています。届くのは写真のカードそのものです。' : '画像はイメージです。状態は表記をご確認ください。'}</p>
         </div>
@@ -387,12 +387,12 @@
               <span class="muted small">再入荷時に1度だけお送りします。</span>` : '<b>再入荷をお待ちください</b>'}
               ${F_ON.favorites ? `<button type="button" class="btn sm ${fav.has(p.id) ? 'primary' : ''}" id="favb">${fav.has(p.id) ? '♥ お気に入り登録済み' : '♡ お気に入りに追加'}</button>` : ''}
             </form>`}
-          ${s ? `<div class="shipnote">🚚 ${s.text}<br><span class="muted small">送料${yen(config.shippingFee)}（${yen(config.freeShippingOver)}以上で無料）${config.pickupEnabled ? '・店頭受け取りは送料無料' : ''}</span></div>` : ''}
+          ${s ? `<div class="shipnote">${s.text}<br><span class="muted small">送料${yen(config.shippingFee)}（${yen(config.freeShippingOver)}以上で無料）${config.pickupEnabled ? '・店頭受け取りは送料無料' : ''}</span></div>` : ''}
           ${F_ON.priceHistory ? '<div class="box"><h3>価格の推移</h3><div id="chart"><p class="muted small">読み込み中…</p></div></div>' : ''}
           ${F_ON.buyback && p.buy_price > 0 ? `
             <div class="box buy">
               <div><span class="muted small">このカードの買取価格</span><div class="bp">${yen(p.buy_price)}</div></div>
-              ${config.buybackUrl ? `<a class="btn" href="${esc(config.buybackUrl)}" target="_blank" rel="noopener">このカードを売る →</a>` : ''}
+              ${config.buybackUrl ? `<a class="btn" href="${esc(config.buybackUrl)}" target="_blank" rel="noopener">このカードを買取に出す</a>` : ''}
             </div>` : ''}
           ${p.description ? `<div class="desc">${esc(p.description).replace(/\n/g, '<br>')}</div>` : ''}
           ${config.condGuide.length ? `<details class="guide"><summary>状態表記について</summary>${config.condGuide.map(([k, v]) => `<p>${condBadge(k)} ${esc(v)}</p>`).join('')}</details>` : ''}
@@ -407,7 +407,7 @@
     const rs = $('#rs');
     if (rs && rs.email) rs.onsubmit = async e => {
       e.preventDefault();
-      try { await api('/api/restock', { method: 'POST', body: JSON.stringify({ product_id: p.id, email: rs.email.value }) }); rs.innerHTML = '<b>✓ 入荷通知を登録しました</b><span class="muted small">入荷したらメールでお知らせします。</span>'; }
+      try { await api('/api/restock', { method: 'POST', body: JSON.stringify({ product_id: p.id, email: rs.email.value }) }); rs.innerHTML = '<b>入荷通知を登録しました</b><span class="muted small">入荷したらメールでお知らせします。</span>'; }
       catch (err) { toast(err.message); }
     };
     bindCards();
@@ -520,7 +520,7 @@
   function showDrawResult(r, o, id) {
     const d = document.createElement('dialog');
     d.className = 'sheet result';
-    d.innerHTML = `<div class="sheet-h"><b>🎁 ${esc(o.title)}</b><span class="small">残り ${r.coins.toLocaleString()}${esc(config.coin.name)}</span></div>
+    d.innerHTML = `<div class="sheet-h"><b>${esc(o.title)}</b><span class="small">残り ${r.coins.toLocaleString()}${esc(config.coin.name)}</span></div>
       <div class="sheet-b"><div class="draws opening">${r.draws.map((x, i) => drawCard(x, i)).join('')}</div>
       <p class="small muted">当選したカードはマイページの「獲得カード」に入りました。まとめて発送を依頼できます。</p></div>
       <div class="sheet-f"><a class="btn" href="#/box" id="tobox">獲得カードを見る</a><button class="btn primary" id="again">続けて引く</button></div>`;
@@ -851,7 +851,7 @@
       <ol class="steps">${steps.map(([l, done], i) => `<li class="${done ? 'done' : (steps[i - 1]?.[1]) ? 'cur' : ''}">${l}</li>`).join('')}</ol>`}
       ${o.draws.length ? `
         <div class="box oripa-open">
-          <h3>${o.kind === 'ship' ? `🎁 ${pickup ? 'お受け取り' : '発送'}する当選カード（${o.draws.length}枚）` : `🎁 オリパ（${o.draws.filter(d => !d.is_last_one).length}口${o.draws.some(d => d.is_last_one) ? '＋ラストワン賞' : ''}）`}</h3>
+          <h3>${o.kind === 'ship' ? `${pickup ? 'お受け取り' : '発送'}する当選カード（${o.draws.length}枚）` : `オリパ（${o.draws.filter(d => !d.is_last_one).length}口${o.draws.some(d => d.is_last_one) ? '＋ラストワン賞' : ''}）`}</h3>
           ${!o.can_open ? `<p class="small">${['cancelled', 'expired'].includes(o.status) ? 'キャンセルされたため開封できません。' : 'ご入金確認後に開封できます。お支払いが済むとこのページに「開封する」ボタンが表示されます。'}</p>` :
             unrevealed ? `<button class="btn primary block" id="reveal">開封する</button>` :
             `<div class="draws">${Object.entries(byOripa).map(([t, ds]) => `<p class="small muted">${esc(t)}</p>${ds.map((d, i) => drawCard(d, i)).join('')}`).join('')}</div>
@@ -861,7 +861,7 @@
         <div class="row-between"><span>注文番号</span><strong class="mono">${esc(o.order_no)}</strong></div>
         <div class="row-between"><span>状況</span><span class="status s-${esc(o.status)}">${esc(o.status_label)}</span></div>
         <div class="row-between"><span>ご注文日時</span><span>${jst(o.created_at)}</span></div>
-        ${o.tracking_no ? `<div class="row-between"><span>${esc(o.carrier_label || '追跡番号')}</span>${o.tracking_url ? `<a class="mono" href="${esc(o.tracking_url)}" target="_blank" rel="noopener">${esc(o.tracking_no)} ↗</a>` : `<strong class="mono">${esc(o.tracking_no)}</strong>`}</div>` : ''}
+        ${o.tracking_no ? `<div class="row-between"><span>${esc(o.carrier_label || '追跡番号')}</span>${o.tracking_url ? `<a class="mono" href="${esc(o.tracking_url)}" target="_blank" rel="noopener">${esc(o.tracking_no)}（配送状況を見る）</a>` : `<strong class="mono">${esc(o.tracking_no)}</strong>`}</div>` : ''}
         ${o.points_earn ? `<div class="row-between"><span>獲得ポイント</span><span>${o.points_earn}pt ${o.points_granted ? '<span class="ok small">付与済み</span>' : `<span class="muted small">${config.points.grantOn === 'paid' ? '入金確認時' : '発送時'}に付与</span>`}</span></div>` : ''}
       </div>
       ${o.bank_info ? `
@@ -886,7 +886,7 @@
       try {
         const r = await api(`/api/orders/${encodeURIComponent(no)}/reveal?t=${encodeURIComponent(tk)}`, { method: 'POST' });
         const box = $('.oripa-open');
-        box.innerHTML = `<h3>🎁 開封結果</h3><div class="draws opening">${r.draws.map((d, i) => drawCard(d, i)).join('')}</div>
+        box.innerHTML = `<h3>開封結果</h3><div class="draws opening">${r.draws.map((d, i) => drawCard(d, i)).join('')}</div>
           <p class="small muted">当選したカードは${pickup ? '店頭でお渡し' : '他の商品と一緒に発送'}します。</p>`;
         requestAnimationFrame(() => setTimeout(() => $$('.dcard', box).forEach(c => c.classList.add('flip')), 60));
       } catch (e) { toast(e.message); rv.disabled = false; }
@@ -946,7 +946,7 @@
     app.innerHTML = `
       <h1 class="h">マイページ</h1>
       ${!c.email_verified && config.mailEnabled ? `<div class="loginhint"><b>メールアドレスの確認がまだです。</b>${c.email} に届いたリンクを開いてください。${F_ON.points && config.points.signupBonus ? `確認すると登録ボーナス${config.points.signupBonus}ptが付きます。` : ''} <button class="link" id="resend">確認メールを再送</button></div>` : ''}
-      ${config.phoneEnabled ? (c.phone_verified ? `<p class="small ok">✓ 電話番号認証済み（${esc(c.phone_verified_number)}）</p>` : `
+      ${config.phoneEnabled ? (c.phone_verified ? `<p class="small ok">電話番号は認証済みです（${esc(c.phone_verified_number)}）</p>` : `
         <div class="box" id="phonebox"><h3>電話番号認証（SMS）</h3>
           <p class="small">${[config.phone.forBonus && F_ON.points && config.points.signupBonus ? `登録ボーナス${config.points.signupBonus}ptの受け取り` : '', config.phone.forOripa && F_ON.oripa ? 'オリパのご購入' : ''].filter(Boolean).join('・') || '安心してお取引いただくため'}に、携帯電話番号の認証をお願いしています。1つの番号は1アカウントでのみ使えます。</p>
           <div class="row pts"><input id="ph" type="tel" inputmode="tel" placeholder="090-1234-5678" value="${esc(c.phone)}"><button class="btn sm primary" id="phsend">SMSを送る</button></div>

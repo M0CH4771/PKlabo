@@ -90,7 +90,7 @@
   function shell(inner) {
     app.innerHTML = `
       <div class="tabs">${TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}
-        <a class="btn sm" href="index.html" target="_blank" style="margin-left:auto;flex:none">ショップ ↗</a></div>
+        <a class="btn sm" href="index.html" target="_blank" style="margin-left:auto;flex:none">ショップを開く</a></div>
       <div id="body">${inner}</div>`;
     $$('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
   }
@@ -133,7 +133,7 @@
   async function viewOrders() { shell('<p class="muted">読み込み中…</p>'); ordersCache = await api('/api/admin/orders'); drawOrders(); }
   function itemsText(o) {
     const lines = o.items.filter(i => !i.oripa_id).map(i => `${esc(i.name)} ${esc(i.card_no)} [${esc(i.condition)}] ${yen(i.price)} × ${i.qty}`);
-    const ol = o.items.filter(i => i.oripa_id).map(i => `🎁 オリパ「${esc(i.name)}」${yen(i.price)} × ${i.qty}口`);
+    const ol = o.items.filter(i => i.oripa_id).map(i => `オリパ「${esc(i.name)}」${yen(i.price)} × ${i.qty}口`);
     const dr = o.draws.length ? `<div class="small" style="margin-top:4px"><b>当選品（発送対象）</b>：${o.draws.map(d => `${esc(d.is_last_one ? 'ラストワン' : d.rank)} ${esc(d.name)}`).join('、')}</div>` : '';
     return [...ol, ...lines].join('<br>') + dr;
   }
@@ -959,7 +959,7 @@
           ${ta('l_returns', '返品・交換について', s.legal.returns, 3)}
           ${ta('l_extra', 'その他', s.legal.extra, 2)}
         </div>
-        <div class="savebar"><a class="btn" href="legal.html" target="_blank">特商法ページを確認 ↗</a><button class="btn primary">設定を保存</button></div>
+        <div class="savebar"><a class="btn" href="legal.html" target="_blank">特商法ページを確認</a><button class="btn primary">設定を保存</button></div>
       </form>
       <details class="fs"><summary><b>管理画面の操作履歴（直近200件）</b></summary><div id="alog" class="overflow" style="max-height:320px"><p class="muted small">読み込み中…</p></div></details>`;
     api('/api/admin/log').then(rows => { $('#alog').innerHTML = `<table class="t">${rows.map(l => `<tr><td class="small">${jst(l.at)}</td><td class="small mono">${esc(l.ip)}</td><td class="small ${l.action === 'ログイン失敗' ? 'danger' : ''}">${esc(actionLabel(l.action))}</td></tr>`).join('')}</table>`; }).catch(() => {});
