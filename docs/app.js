@@ -537,7 +537,8 @@
       return `<div class="coinpanel">
         <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
         <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
-        <p class="small" style="margin:0">下のボードからパックを選んで開けられます（1回に${lim}個まで）。</p>
+        <button type="button" class="btn block" id="gopick" style="margin-top:0"><b>パックを選んで開ける</b></button>
+        <p class="small muted" style="margin:0">ボードから好きなパックを選べます（1回に${lim}個まで）。</p>
         <div><span class="small">選ばずにランダムで引く</span>${drawBtns('data-rnd', lim)}</div>
         ${coinBal < o.price ? `<p class="small danger" style="margin:0">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
       </div>`;
@@ -577,6 +578,7 @@
     if (pick) {
       paintBoard(o.board);
       $$('[data-rnd]').forEach(b => b.onclick = () => openPacks({ qty: nOf(b) }, b));
+      const gp = $('#gopick'); if (gp) gp.onclick = () => { $('#boardbox').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#boardbox').classList.add('flash'); setTimeout(() => $('#boardbox')?.classList.remove('flash'), 1200); };
       const clr = $('#pbclear'); if (clr) clr.onclick = () => { picked.clear(); paintBoard(o.board); };
       const op = $('#pbopen');
       if (op) op.onclick = () => openPacks({ slots: [...picked].sort((a, b) => a - b) }, op);

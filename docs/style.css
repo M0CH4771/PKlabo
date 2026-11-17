@@ -573,3 +573,5 @@ body:has(.pickbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inse
 .drawpick .btn { flex: 1; display: grid; gap: 1px; padding: 10px 8px; }
 .btn.block.allin { display: grid; gap: 1px; margin: 4px 0 2px; }
 .btn.allin b { font-size: 15.5px; }
+.boardbox { scroll-margin-top: 70px; }
+.boardbox.flash { box-shadow: 0 0 0 3px var(--accent); transition: box-shadow .3s; }
