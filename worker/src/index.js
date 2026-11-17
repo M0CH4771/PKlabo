@@ -749,7 +749,8 @@ async function requireAdmin(req, env) {
   if (key && !env.ADMIN_TOTP_SECRET) {
     const ip = clientIp(req);
     if (await overLimit(env, `adminfail:${ip}`, 5)) throw new HttpError(429, 'ログインの失敗が続いたため、15分間ロックしています');
-    if (env.ADMIN_KEY && env.ADMIN_KEY.length >= ADMIN_KEY_MIN && timingSafeEqual(key, env.ADMIN_KEY)) return;
+    const adminKey = String(env.ADMIN_KEY || '').trim();
+    if (adminKey.length >= ADMIN_KEY_MIN && timingSafeEqual(key.trim(), adminKey)) return;
     await rateLimit(env, `adminfail:${ip}`, 1000, 900);
   }
   throw new HttpError(401, '管理画面にログインしてください');
@@ -757,10 +758,11 @@ async function requireAdmin(req, env) {
 
 async function adminLogin(req, env) {
   const ip = clientIp(req);
-  if (!env.ADMIN_KEY || env.ADMIN_KEY.length < ADMIN_KEY_MIN) throw new HttpError(503, `ADMIN_KEY が未設定か短すぎます（${ADMIN_KEY_MIN}文字以上にしてください）`);
+  const adminKey = String(env.ADMIN_KEY || '').trim(); // コピペで紛れた前後の空白・改行は無視
+  if (adminKey.length < ADMIN_KEY_MIN) throw new HttpError(503, `ADMIN_KEY が未設定か短すぎます（${ADMIN_KEY_MIN}文字以上にしてください）`);
   if (await overLimit(env, `adminfail:${ip}`, 5) || await overLimit(env, 'adminfail:all', 30)) throw new HttpError(429, 'ログインの失敗が続いたため、しばらくロックしています');
   const b = await readJson(req);
-  let ok = timingSafeEqual(String(b.key || ''), env.ADMIN_KEY);
+  let ok = timingSafeEqual(String(b.key || '').trim(), adminKey);
   if (ok && env.ADMIN_TOTP_SECRET) {
     const step = await verifyTotp(env.ADMIN_TOTP_SECRET, b.otp);
     ok = step !== null && (await rateLimit(env, `totp:${step}`, 1000, 120)) === 1; // 同じコードの使い回しを防ぐ
@@ -780,7 +782,7 @@ async function adminLogin(req, env) {
 }
 
 async function adminRoutes(req, env, path, url) {
-  if (path === '/api/admin/auth-info' && req.method === 'GET') return json({ totp: Boolean(env.ADMIN_TOTP_SECRET), ready: Boolean(env.ADMIN_KEY && env.ADMIN_KEY.length >= ADMIN_KEY_MIN) });
+  if (path === '/api/admin/auth-info' && req.method === 'GET') return json({ totp: Boolean(env.ADMIN_TOTP_SECRET), ready: String(env.ADMIN_KEY || '').trim().length >= ADMIN_KEY_MIN });
   if (path === '/api/admin/login' && req.method === 'POST') return adminLogin(req, env);
   if (path === '/api/admin/logout' && req.method === 'POST') {
     const sess = req.headers.get('X-Admin-Session') || '';
