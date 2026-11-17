@@ -447,6 +447,8 @@
     const limitC = Math.max(0, Math.min(o.max_per_order, config.oripa.maxPerOrder, o.remaining));
     if (F_ON.coins && token && !me) await refreshMe();
     const coinBal = F_ON.coins && me ? (await api('/api/me/coins').catch(() => ({ coins: 0 }))).coins : 0;
+    const pick = F_ON.coins && o.pick_mode && o.board;
+    const picked = new Set();
     app.innerHTML = `
       <a href="#/oripa" class="back">← オリパ一覧へ</a>
       <div class="detail">
@@ -458,7 +460,7 @@
           <div class="dprice">${F_ON.coins ? `<span class="price big">${o.price.toLocaleString()}</span><small class="muted">${esc(config.coin.name)}／1口</small>` : `<span class="price big">${yen(o.price)}</span><small class="muted">／1口（税込）</small>`}</div>
           <div class="obar big"><i style="width:${o.total ? Math.round(o.remaining / o.total * 100) : 0}%"></i></div>
           <p class="row-between"><span>残り <b class="big-num">${o.remaining}</b> / ${o.total}口</span>${o.ends_at ? `<span class="muted small">${jst(o.ends_at)}まで</span>` : ''}</p>
-          ${!o.open ? '<p class="danger"><b>このオリパは完売・終了しました</b></p>' : F_ON.coins ? coinPanel(o, limitC) : `
+          ${!o.open ? '<p class="danger"><b>このオリパは完売・終了しました</b></p>' : F_ON.coins ? (pick ? pickPanel(o, limitC) : coinPanel(o, limitC)) : `
             <div class="qty-row">
               <select id="oqty">${[1, 3, 5, 10, 20, 50].filter(n => n <= limit).concat(limit && ![1, 3, 5, 10, 20, 50].includes(limit) ? [limit] : []).map(n => `<option value="${n}">${n}口 ${yen(n * o.price)}</option>`).join('')}</select>
               <button class="btn primary" id="oadd" ${limit ? '' : 'disabled'}>カートに入れる</button>
@@ -468,6 +470,11 @@
           ${o.description ? `<div class="desc">${esc(o.description).replace(/\n/g, '<br>')}</div>` : ''}
         </div>
       </div>
+      ${pick ? `<div class="box boardbox" id="boardbox">
+        <div class="row-between"><h3 style="margin:0">パックを選ぶ</h3><span class="small muted" id="bstat"></span></div>
+        <p class="small muted" style="margin:4px 0 10px">${o.open ? 'タップして選び、「開封する」で開けます。開けられたパックには中身が表示されます。どのパックを選んでも当たる確率は同じです。' : '開封済みのパックの中身です。'}</p>
+        <div class="board" id="board"></div></div>
+        ${o.open && me ? `<div class="pickbar" id="pickbar" hidden><span><b id="pbn">0</b>個　<b id="pbc">0</b>${esc(config.coin.name)}</span><button class="btn" id="pbclear">選び直す</button><button class="btn primary" id="pbopen">開封する</button></div>` : ''}` : ''}
       <div class="box">
         <h3>封入内容</h3>
         ${showQty ? `<p class="small muted">全${o.total}口の封入内容です。封入率は全${o.total}口に対する割合です。</p>` : ''}
@@ -506,6 +513,88 @@
       }
     });
 
+    // ── ボード形式（パックを選んで開ける） ──
+    function pickPanel(o, lim) {
+      const cn = esc(config.coin.name);
+      if (!me) return `<div class="coinpanel"><p class="small">パックを選んで、${cn}で開けられます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして選ぶ</a></div>`;
+      const n = [1, 3, 5, 10].filter(k => k <= lim);
+      return `<div class="coinpanel">
+        <div class="row-between"><span class="small">保有${cn}</span><span><b class="big-num">${coinBal.toLocaleString()}</b> <a class="btn sm" href="#/coins">購入する</a></span></div>
+        <label class="check agree small"><input type="checkbox" id="oagree" ${store.get('pk_oripa_agree', false) ? 'checked' : ''}> <span>注意事項に同意します（${esc(config.oripa.ageNotice)}）</span></label>
+        <p class="small" style="margin:0">下のボードからパックを選んでください（1回に${lim}個まで）。</p>
+        ${n.length ? `<div class="row-between"><span class="small">おまかせで選ぶ</span><span class="drawbtns" style="flex:1;max-width:260px">${n.map(k => `<button type="button" class="btn sm" data-auto="${k}">${k}個</button>`).join('')}</span></div>` : ''}
+        ${coinBal < o.price ? `<p class="small danger" style="margin:0">${cn}が足りません。<a href="#/coins">${cn}を購入する</a></p>` : ''}
+      </div>`;
+    }
+    function paintBoard(board) {
+      const el = $('#board'); if (!el) return;
+      const opened = new Map(board.opened.map(x => [x.slot, x]));
+      [...picked].forEach(s => { if (opened.has(s)) picked.delete(s); });
+      let html = '';
+      for (let n = 1; n <= board.size; n++) {
+        const x = opened.get(n);
+        html += x
+          ? `<div class="bt open t-${x.tier}" title="${n}番：${esc(x.rank)} ${esc(x.name)}">${x.image_url ? `<img src="${esc(x.image_url)}" alt="" loading="lazy">` : ''}<span class="bt-r">${esc(x.rank)}</span><i>${n}</i></div>`
+          : `<button type="button" class="bt ${picked.has(n) ? 'on' : ''}" data-slot="${n}" ${o.open && me ? '' : 'disabled'} aria-pressed="${picked.has(n)}" aria-label="${n}番のパック"><i>${n}</i></button>`;
+      }
+      el.innerHTML = html;
+      $('#bstat').textContent = `開封済み ${board.opened.length} / ${board.size}`;
+      $$('[data-slot]', el).forEach(b => b.onclick = () => togglePick(+b.dataset.slot, b));
+      syncBar();
+    }
+    function togglePick(n, b) {
+      if (picked.has(n)) picked.delete(n);
+      else {
+        if (picked.size >= limitC) { toast(`1回に開けられるのは${limitC}個までです`); return; }
+        picked.add(n);
+      }
+      if (b) { b.classList.toggle('on', picked.has(n)); b.setAttribute('aria-pressed', picked.has(n)); }
+      syncBar();
+    }
+    function syncBar() {
+      const bar = $('#pickbar'); if (!bar) return;
+      bar.hidden = !picked.size;
+      $('#pbn').textContent = picked.size;
+      $('#pbc').textContent = (picked.size * o.price).toLocaleString();
+      $('#pbopen').disabled = picked.size * o.price > coinBal;
+    }
+    if (pick) {
+      paintBoard(o.board);
+      $$('[data-auto]').forEach(b => b.onclick = () => {
+        picked.clear();
+        const pool = [...$$('#board [data-slot]')].map(x => +x.dataset.slot);
+        for (let i = 0; i < +b.dataset.auto && pool.length; i++) { const u = new Uint32Array(1); crypto.getRandomValues(u); picked.add(pool.splice(u[0] % pool.length, 1)[0]); }
+        $$('#board [data-slot]').forEach(x => { const on = picked.has(+x.dataset.slot); x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
+        syncBar();
+        $('#boardbox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      const clr = $('#pbclear'); if (clr) clr.onclick = () => { picked.clear(); paintBoard(o.board); };
+      const op = $('#pbopen');
+      if (op) op.onclick = async () => {
+        const agree = $('#oagree');
+        if (agree && !agree.checked) { toast('注意事項への同意にチェックしてください'); agree.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+        op.disabled = true;
+        try {
+          const r = await api(`/api/oripas/${o.id}/draw`, { method: 'POST', body: JSON.stringify({ slots: [...picked].sort((a, b) => a - b), agree: true }) });
+          picked.clear();
+          showDrawResult(r, o, id);
+          viewOripa(id);
+        } catch (e) {
+          toast(e.message);
+          if (e.status === 403 && /電話番号/.test(e.message)) { location.hash = '#/account'; return; }
+          if (e.status === 409) { try { o.board = (await api(`/api/oripas/${o.id}?_=${Date.now()}`)).board; paintBoard(o.board); } catch { /* 次の更新で直る */ } }
+          op.disabled = false;
+        }
+      };
+      // ほかのお客様が開けたパックを数十秒ごとに反映
+      const here = location.hash;
+      const tick = setInterval(async () => {
+        if (location.hash !== here || !$('#board')) { clearInterval(tick); return; }
+        if (document.hidden || document.querySelector('.op-ov')) return;
+        try { const x = await api(`/api/oripas/${o.id}?_=${Date.now()}`); if (x.board && x.board.opened.length !== o.board.opened.length) { o.board = x.board; paintBoard(o.board); } } catch { /* 通信エラーは次回 */ }
+      }, 20000);
+    }
+
     function coinPanel(o, lim) {
       const cn = esc(config.coin.name);
       if (!me) return `<div class="coinpanel"><p class="small">${cn}を購入して引くと、その場で結果が出ます。</p><a class="btn primary block" href="#/account?next=oripa/${o.id}">ログインして引く</a></div>`;
@@ -526,7 +615,7 @@
     window.PKOpening.play(r.draws, {
       title: o.title, logo: config.logoText || 'PK',
       sub: `当選したカードは「獲得カード」に入りました（残り ${r.coins.toLocaleString()}${esc(config.coin.name)}）`,
-      actions: [{ key: 'box', label: '獲得カードを見る' }, { key: 'again', label: '続けて引く', primary: true }],
+      actions: [{ key: 'box', label: '獲得カードを見る' }, { key: 'again', label: o.pick_mode ? '続けて選ぶ' : '続けて引く', primary: true }],
       onAction(key, close) { close(); if (key === 'box') location.hash = '#/box'; else viewOripa(id); },
     });
   }

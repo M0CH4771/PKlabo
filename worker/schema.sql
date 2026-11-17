@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS oripas (
   starts_at      TEXT,
   ends_at        TEXT,
   sort           INTEGER NOT NULL DEFAULT 0,
+  pick_mode      INTEGER NOT NULL DEFAULT 0,     -- 1=お客様がパックを選んで開ける（ボード形式・コインで引くときだけ）
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -212,9 +213,11 @@ CREATE TABLE IF NOT EXISTS oripa_draws (
   prize_id     INTEGER NOT NULL,
   is_last_one  INTEGER NOT NULL DEFAULT 0,
   revealed_at  TEXT,
+  slot         INTEGER,                    -- ボード形式で選ばれたパックの番号（1〜総口数）
   created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_draws_order ON oripa_draws(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_draws_slot ON oripa_draws(oripa_id, slot) WHERE slot IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_draws_customer ON oripa_draws(customer_id, order_id);
 CREATE INDEX IF NOT EXISTS idx_draws_oripa ON oripa_draws(oripa_id, revealed_at);
 

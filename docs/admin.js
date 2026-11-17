@@ -499,7 +499,7 @@
       <div class="toolbar2"><button class="btn primary sm" id="newo">＋ オリパを作成</button><button class="btn sm" id="ocsv">CSVで作成・更新</button><button class="btn sm" id="oexp" ${list.length ? '' : 'disabled'}>CSVに書き出す</button><span class="muted small">販売開始後は封入内容（賞品・数）を変更できません（公平性のため）。</span></div>
       <div class="ogrid">${list.map(o => {
         const st = { draft: '下書き', live: '販売中', ended: '終了' }[o.status];
-        return `<div class="panel"><div class="row-between"><b>${esc(o.title)}</b><span class="pill">${st}</span></div>
+        return `<div class="panel"><div class="row-between"><b>${esc(o.title)}</b><span>${o.pick_mode ? '<span class="pill">ボード形式</span> ' : ''}<span class="pill">${st}</span></span></div>
           <div class="small">${unitPrice(o.price)}/口　販売 ${o.sold} / ${o.total}口　売上 ${yen(o.sold * o.price)}</div>
           <div class="obar" style="margin:6px 0"><i style="width:${o.total ? Math.round((o.total - o.sold) / o.total * 100) : 0}%"></i></div>
           <div class="small muted">${o.prizes.map(p => `${esc(p.is_last_one ? 'ラストワン' : p.rank)} ${esc(p.name)} ${p.remaining}/${p.qty}`).join('<br>')}</div>
@@ -511,7 +511,8 @@
     $('#oexp').onclick = () => download(`oripa_${today()}.csv`, [ORIPA_COLS.map(c => c[1]), ...list.flatMap(o => o.prizes.map((p, i) => ORIPA_COLS.map(([k]) => {
       if (k === 'oripa_id') return o.id;
       if (k === 'title') return o.title;
-      if (i > 0 && ['price', 'status', 'max_per_order', 'banner', 'description'].includes(k)) return '';
+      if (i > 0 && ['price', 'status', 'max_per_order', 'pick_mode', 'banner', 'description'].includes(k)) return '';
+      if (k === 'pick_mode') return o.pick_mode ? '○' : '';
       if (k === 'price') return o.price;
       if (k === 'status') return { draft: '下書き', live: '販売中', ended: '終了' }[o.status];
       if (k === 'max_per_order') return o.max_per_order;
@@ -534,7 +535,7 @@
       const d = $('#dlg');
       d.innerHTML = `<form method="dialog" class="form"><h2 style="margin:0">当選履歴（${rows.length}件）</h2><div class="overflow" style="max-height:60vh"><table class="t">
         <tr><th>日時</th><th>注文</th><th>お客様</th><th>賞</th><th>状況</th></tr>
-        ${rows.map(r => `<tr><td class="small">${jst(r.created_at)}</td><td class="mono small">${esc(r.order_no || '—')}</td><td class="small">${esc(r.customer)}</td><td class="small">${esc(r.is_last_one ? 'ラストワン' : r.rank)} ${esc(r.name)}</td><td class="small">${!r.order_no ? '獲得カードBOXに保管中' : r.kind === 'ship' ? `発送依頼・${esc(STATUS[r.status])}` : `${esc(STATUS[r.status])}${r.revealed_at ? '・開封済' : ''}`}</td></tr>`).join('')}</table></div>
+        ${rows.map(r => `<tr><td class="small">${jst(r.created_at)}</td><td class="mono small">${esc(r.order_no || '—')}</td><td class="small">${esc(r.customer)}</td><td class="small">${r.slot ? `${r.slot}番 ` : ''}${esc(r.is_last_one ? 'ラストワン' : r.rank)} ${esc(r.name)}</td><td class="small">${!r.order_no ? '獲得カードBOXに保管中' : r.kind === 'ship' ? `発送依頼・${esc(STATUS[r.status])}` : `${esc(STATUS[r.status])}${r.revealed_at ? '・開封済' : ''}`}</td></tr>`).join('')}</table></div>
         <button class="btn">閉じる</button></form>`;
       d.showModal();
     });
@@ -542,7 +543,7 @@
 
 
   const unitPrice = n => settings?.features?.coins ? `${Number(n).toLocaleString()}${esc(settings.coin.name)}` : yen(n);
-  const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['banner', 'バナー画像URL'], ['description', '説明'],
+  const ORIPA_COLS = [['oripa_id', 'オリパID'], ['title', 'オリパ名'], ['price', '1口の価格'], ['status', '状態'], ['max_per_order', '1回の上限口数'], ['pick_mode', 'パックを選ぶ'], ['banner', 'バナー画像URL'], ['description', '説明'],
     ['rank', 'ランク'], ['name', '賞品名'], ['qty', '封入数'], ['value', '参考価格'], ['image_url', '賞品画像URL'], ['is_last_one', 'ラストワン'], ['product_id', '商品ID'], ['card_no', '型番'], ['condition', '商品の状態']];
   const ORIPA_ALIAS = Object.fromEntries([...ORIPA_COLS.map(([k, l]) => [l, k]), ...ORIPA_COLS.map(([k]) => [k, k]),
     ['タイトル', 'title'], ['価格', 'price'], ['賞', 'rank'], ['枚数', 'qty'], ['口数', 'qty'], ['画像URL', 'image_url'], ['LO', 'is_last_one'], ['状態（商品）', 'condition']]);
@@ -626,7 +627,7 @@
         ['', '', '', '', '', '', '', 'A賞', '', 2, '', '', '', pick.id || '', '', ''],
         ['', '', '', '', '', '', '', 'B賞', '', 3, '', '', '', '', pick.card_no || '201/165', pick.condition || 'A'],
         ['', '', '', '', '', '', '', 'C賞', 'SAR 1枚', 94, 1200, '', '', '', '', ''],
-        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']]);
+        ['', '', '', '', '', '', '', 'ラストワン', 'BOX 1個', 1, 6600, '', '○', '', '', '']].map((r, i) => i === 0 ? r : [...r.slice(0, 5), '', ...r.slice(5)]));
     };
     $('#ofile').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
@@ -648,6 +649,7 @@
         const newGroup = (o.title && (!g || g.title !== o.title)) || (o.oripa_id && (!g || String(g.id || '') !== o.oripa_id));
         if (newGroup || !g) { g = { title: o.title || '', id: o.oripa_id ? +o.oripa_id : null, line, prizes: [] }; groups.push(g); }
         for (const [k, kk] of [['price', 'price'], ['max_per_order', 'max_per_order'], ['banner', 'image_url'], ['description', 'description']]) if (o[k] && g[kk] === undefined) g[kk] = o[k];
+        if (o.pick_mode && g.pick_mode === undefined) g.pick_mode = /^(1|true|○|〇|はい|yes)$/i.test(o.pick_mode);
         if (o.status && !g.status) g.status = /販売|live|公開/i.test(o.status) ? 'live' : /終了|ended/i.test(o.status) ? 'ended' : 'draft';
         if (!o.name && !o.product_id && !o.card_no && !o.qty) return; // 賞のない行（オリパの項目だけ）
         const prod = (o.product_id || o.card_no) ? findProduct(o) : null;
@@ -684,7 +686,7 @@
         const res = [];
         for (const g of groups) {
           let cur = null;
-          let body = { title: g.title, price: g.price, status: g.status || 'draft', max_per_order: g.max_per_order || 10, image_url: g.image_url || '', description: g.description || '', prizes: g.prizes };
+          let body = { title: g.title, price: g.price, status: g.status || 'draft', max_per_order: g.max_per_order || 10, pick_mode: g.pick_mode, image_url: g.image_url || '', description: g.description || '', prizes: g.prizes };
           if (g.id) {
             cur = (await api('/api/admin/oripas')).find(o => o.id === g.id);
             if (!cur) { res.push(`ID ${g.id}：見つかりません`); continue; }
@@ -827,6 +829,8 @@
           <label>販売終了（任意）<input name="ends_at" type="datetime-local" value="${toLocalInput(v.ends_at)}"></label>
           <label>表示順<input name="sort" type="number" value="${esc(v.sort || 0)}"></label>
         </div>
+        <label class="check"><input type="checkbox" name="pick_mode" ${v.pick_mode ? 'checked' : ''} ${locked ? 'disabled' : ''}> お客様がパックを選んで開ける（ボード形式）</label>
+        <p class="hint2" style="margin:-6px 0 0">総口数ぶんのパックがボードに並び、お客様が番号を選んで開けます。開けられたパックには中身が表示されます。中身は開けた瞬間に抽選するので、どのパックを選んでも確率は同じです。「オリパをコインで引く」がONのときだけ使えます（2,000口まで）。${locked ? '販売開始後は変更できません。' : ''}</p>
         <div><b class="small">バナー画像</b><div class="imgs" id="oimg"></div></div>
         <label>説明<textarea name="description" rows="3">${esc(v.description)}</textarea></label>
         <div class="fs" style="background:var(--bg)"><h3>封入内容</h3><p class="hint2">ハズレ枠も「C賞 ノーマル5枚」のように賞品として登録してください（総口数＝封入数の合計）。LO＝ラストワン賞（最後の1口を引いた人に追加でプレゼント）。</p><div class="rows" id="prz"></div></div>
@@ -848,7 +852,7 @@
     $('#of').onsubmit = async e => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target));
-      const body = { ...fd, id: o?.id, price: locked ? o.price : fd.price, image_url: image, starts_at: fromLocalInput(fd.starts_at), ends_at: fromLocalInput(fd.ends_at), prizes };
+      const body = { ...fd, id: o?.id, pick_mode: locked ? o.pick_mode : !!fd.pick_mode, price: locked ? o.price : fd.price, image_url: image, starts_at: fromLocalInput(fd.starts_at), ends_at: fromLocalInput(fd.ends_at), prizes };
       if (body.status === 'live' && prizes.some(p => !p.name)) { toast('賞品名が空の行があります'); return; }
       try { const r = await api('/api/admin/oripas', { method: 'POST', body: JSON.stringify(body) }); d.close(); toast(r.note || '保存しました'); viewOripa(); } catch (err) { toast(err.message); }
     };

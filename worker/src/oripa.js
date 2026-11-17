@@ -33,7 +33,7 @@ function publicOripa(o, prizes) {
   return {
     id: o.id, title: o.title, image_url: o.image_url, description: o.description, price: o.price,
     total: o.total, sold: o.sold, remaining: o.total - o.sold, max_per_order: o.max_per_order,
-    status: o.status, open: isOpen(o) && o.sold < o.total, starts_at: o.starts_at, ends_at: o.ends_at, prizes: prizes || [],
+    status: o.status, open: isOpen(o) && o.sold < o.total, starts_at: o.starts_at, ends_at: o.ends_at, prizes: prizes || [], pick_mode: o.pick_mode ? 1 : 0,
   };
 }
 
@@ -56,9 +56,20 @@ export async function oripaPublicRoutes(req, env, path) {
       `SELECT p.rank, p.name, p.image_url, p.value, d.is_last_one, d.revealed_at FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id
         WHERE d.oripa_id = ? AND d.revealed_at IS NOT NULL ORDER BY d.revealed_at DESC LIMIT 20`
     ).bind(o.id).all();
-    return json({ ...publicOripa(o, publicPrizes(env, pz[o.id])), recent: cfg(env).oripa.showValue ? recent : recent.map(({ value, ...r }) => r) }, 200, { 'Cache-Control': 'public, max-age=5' });
+    const board = o.pick_mode ? await boardOf(env, o) : undefined;
+    return json({ ...publicOripa(o, publicPrizes(env, pz[o.id])), board, recent: cfg(env).oripa.showValue ? recent : recent.map(({ value, ...r }) => r) }, 200, { 'Cache-Control': 'public, max-age=5' });
   }
   return null;
+}
+
+// ボード形式：開けられたパックの番号と中身（まだ開けられていない番号の中身は存在しない＝開けた瞬間に抽選）
+export async function boardOf(env, o) {
+  const { results } = await env.DB.prepare(
+    `SELECT d.slot, d.prize_id, d.is_last_one, p.rank, p.name, p.image_url FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id
+      WHERE d.oripa_id = ? AND d.slot IS NOT NULL ORDER BY d.slot`
+  ).bind(o.id).all();
+  const tiers = await prizeTiers(env, [o.id]);
+  return { size: o.total, opened: results.map(({ prize_id, ...r }) => ({ ...r, tier: tiers.get(prize_id) || 'normal' })) };
 }
 
 // 注文用：オリパの価格チェック
@@ -226,19 +237,21 @@ export async function adminOripaRoutes(req, env, path) {
       price: Math.max(0, int(b.price)), max_per_order: Math.max(1, int(b.max_per_order, 10)),
       status: ['draft', 'live', 'ended'].includes(b.status) ? b.status : 'draft',
       starts_at: b.starts_at ? toSql(new Date(b.starts_at)) : null, ends_at: b.ends_at ? toSql(new Date(b.ends_at)) : null, sort: int(b.sort),
+      pick_mode: truthy(b.pick_mode) ? 1 : 0,
     };
     if (!meta.title) throw new HttpError(400, 'タイトルを入力してください');
     if (meta.price <= 0) throw new HttpError(400, '1口の価格を入力してください');
     const prizes = (Array.isArray(b.prizes) ? b.prizes : []).map(cleanPrize).filter(p => p.name);
     const total = prizes.filter(p => !p.is_last_one).reduce((s, p) => s + p.qty, 0);
+    if (meta.pick_mode && total > 2000) throw new HttpError(400, 'パックを選んで開ける形式は2,000口までです');
     if (meta.status === 'live' && total <= 0) throw new HttpError(400, '賞品（封入数）を登録してから公開してください');
     if (prizes.filter(p => p.is_last_one).length > 1) throw new HttpError(400, 'ラストワン賞は1つまでです');
     if (prizes.length > 40) throw new HttpError(400, '賞は1つのオリパにつき40種類までです');
 
     if (!id) {
       const r = await env.DB.prepare(
-        `INSERT INTO oripas (title, image_url, description, price, total, sold, status, max_per_order, starts_at, ends_at, sort) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`
-      ).bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort).run();
+        `INSERT INTO oripas (title, image_url, description, price, total, sold, status, max_per_order, starts_at, ends_at, sort, pick_mode) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
+      ).bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode).run();
       const oid = r.meta.last_row_id;
       if (prizes.length) await env.DB.batch(prizes.map(p => env.DB.prepare(
         'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -260,13 +273,15 @@ export async function adminOripaRoutes(req, env, path) {
       await env.DB.batch([
         env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, updated_at=datetime('now') WHERE id=?`)
           .bind(meta.title, meta.image_url, meta.description, cur.price, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, id),
+        // 販売開始後は形式（ボード形式かどうか）も変えない
         ...prizes.map(p => env.DB.prepare('UPDATE oripa_prizes SET rank=?, name=?, image_url=?, value=?, sort=? WHERE id=? AND oripa_id=?').bind(p.rank, p.name, p.image_url, p.value, p.sort, p.id, id)),
       ]);
-      return json({ id, note: cur.price !== meta.price ? '販売開始後のため価格は変更していません' : undefined });
+      const notes = [cur.price !== meta.price && '価格', (cur.pick_mode ? 1 : 0) !== meta.pick_mode && '形式（パックを選んで開ける）'].filter(Boolean);
+      return json({ id, note: notes.length ? `販売開始後のため${notes.join('・')}は変更していません` : undefined });
     }
     await env.DB.batch([
-      env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, total=?, sold=0, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, updated_at=datetime('now') WHERE id=?`)
-        .bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, id),
+      env.DB.prepare(`UPDATE oripas SET title=?, image_url=?, description=?, price=?, total=?, sold=0, status=?, max_per_order=?, starts_at=?, ends_at=?, sort=?, pick_mode=?, updated_at=datetime('now') WHERE id=?`)
+        .bind(meta.title, meta.image_url, meta.description, meta.price, total, meta.status, meta.max_per_order, meta.starts_at, meta.ends_at, meta.sort, meta.pick_mode, id),
       env.DB.prepare('DELETE FROM oripa_prizes WHERE oripa_id = ?').bind(id),
       ...prizes.map(p => env.DB.prepare(
         'INSERT INTO oripa_prizes (oripa_id, rank, name, image_url, qty, remaining, value, is_last_one, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -291,7 +306,7 @@ export async function adminOripaRoutes(req, env, path) {
   mm = path.match(/^\/api\/admin\/oripas\/(\d+)\/draws$/);
   if (mm && m === 'GET') {
     const { results } = await env.DB.prepare(
-      `SELECT d.id, d.is_last_one, d.created_at, d.revealed_at, p.rank, p.name, p.value, o.order_no, o.status, o.kind, COALESCE(o.name, c.name) AS customer
+      `SELECT d.id, d.slot, d.is_last_one, d.created_at, d.revealed_at, p.rank, p.name, p.value, o.order_no, o.status, o.kind, COALESCE(o.name, c.name) AS customer
          FROM oripa_draws d JOIN oripa_prizes p ON p.id = d.prize_id
          LEFT JOIN orders o ON o.id = d.order_id LEFT JOIN customers c ON c.id = d.customer_id
         WHERE d.oripa_id = ? ORDER BY d.id DESC LIMIT 1000`

@@ -88,9 +88,9 @@
 
   function cardHtml(d, i, logo) {
     return `<div class="op-card t-${d.tier || 'normal'}" data-i="${i}"><div class="op-in">
-      <div class="op-back"><span>${esc(logo)}</span></div>
+      <div class="op-back"><span>${esc(logo)}</span>${d.slot ? `<em class="op-no">${d.slot}番</em>` : ''}</div>
       <div class="op-front">${d.image_url ? `<img src="${esc(d.image_url)}" alt="">` : '<div class="op-noimg"></div>'}
-        <span class="op-rank">${esc(label(d))}</span><b>${esc(d.name)}</b></div>
+        <span class="op-rank">${esc(label(d))}</span><b>${esc(d.name)}</b>${d.slot ? `<em class="op-no">${d.slot}番</em>` : ''}</div>
     </div></div>`;
   }
 

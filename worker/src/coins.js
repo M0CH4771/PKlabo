@@ -111,21 +111,32 @@ export async function coinRoutes(req, env, path) {
     const o = await env.DB.prepare('SELECT * FROM oripas WHERE id = ?').bind(int(m[1])).first();
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
     if (!o || o.status !== 'live' || (o.starts_at && o.starts_at > now) || (o.ends_at && o.ends_at <= now)) throw new HttpError(409, 'このオリパは販売期間外です');
-    const qty = int(b.qty);
+    // ボード形式：選んだパックの番号（重複なし・1〜総口数・まだ開けられていないもの）
+    const slots = o.pick_mode ? [...new Set((Array.isArray(b.slots) ? b.slots : []).map(n => int(n)))].filter(n => n >= 1 && n <= o.total) : null;
+    if (o.pick_mode && (!slots.length || slots.length !== (Array.isArray(b.slots) ? b.slots.length : 0))) throw new HttpError(400, '開けるパックを選んでください');
+    const qty = o.pick_mode ? slots.length : int(b.qty);
     const limit = Math.min(o.max_per_order || 9999, c.oripa.maxPerOrder);
-    if (qty < 1 || qty > limit) throw new HttpError(400, `1回に引けるのは${limit}口までです`);
+    if (qty < 1 || qty > limit) throw new HttpError(400, `1回に${o.pick_mode ? '開けられる' : '引ける'}のは${limit}口までです`);
+    if (slots) {
+      const taken = await env.DB.prepare(`SELECT slot FROM oripa_draws WHERE oripa_id = ? AND slot IN (${slots.map(() => '?').join(',')})`).bind(o.id, ...slots).all();
+      if (taken.results.length) throw new HttpError(409, `${taken.results.map(r => r.slot).join('・')}番のパックは先に開けられました。別のパックを選んでください`);
+    }
     const cost = o.price * qty;
     const used = await spendCoins(env, cust.id, cost, `オリパ「${o.title}」${qty}口`);
     let draws;
     try { draws = await drawForItems(env, [{ oripa_id: o.id, qty }]); }
     catch (e) { await refundCoins(env, cust.id, used, `返却：オリパ「${o.title}」（抽選できませんでした）`); throw e; }
+    // 選んだ番号を、引いた順に割り当てる（ラストワン賞は番号なし）
+    let si = 0;
+    draws.forEach(d => { d.slot = slots && !d.is_last_one ? slots[si++] : null; });
     try {
       await env.DB.batch(draws.map(d => env.DB.prepare(
-        `INSERT INTO oripa_draws (oripa_id, order_id, customer_id, prize_id, is_last_one, revealed_at) VALUES (?, NULL, ?, ?, ?, datetime('now'))`
-      ).bind(d.oripa_id, cust.id, d.prize_id, d.is_last_one)));
+        `INSERT INTO oripa_draws (oripa_id, order_id, customer_id, prize_id, is_last_one, revealed_at, slot) VALUES (?, NULL, ?, ?, ?, datetime('now'), ?)`
+      ).bind(d.oripa_id, cust.id, d.prize_id, d.is_last_one, d.slot)));
     } catch (e) {
       await undoDraws(env, draws);
-      await refundCoins(env, cust.id, used, `返却：オリパ「${o.title}」（エラー）`);
+      await refundCoins(env, cust.id, used, `返却：オリパ「${o.title}」（${/UNIQUE/i.test(String(e.message)) ? '同じパックが同時に開けられました' : 'エラー'}）`);
+      if (/UNIQUE/i.test(String(e.message))) throw new HttpError(409, '選んだパックがほかの方と同時に開けられました。コインは戻しています。別のパックを選んでください');
       throw e;
     }
     const ids = [...new Set(draws.map(d => d.prize_id))];
@@ -134,7 +145,7 @@ export async function coinRoutes(req, env, path) {
     const bal = await env.DB.prepare('SELECT coins FROM customers WHERE id = ?').bind(cust.id).first();
     const tiers = await prizeTiers(env, [o.id]);
     return json({
-      draws: draws.map(d => publicDraw(env, { ...byId.get(d.prize_id), prize_id: d.prize_id, is_last_one: d.is_last_one, title: o.title }, tiers)),
+      draws: draws.map(d => publicDraw(env, { ...byId.get(d.prize_id), prize_id: d.prize_id, is_last_one: d.is_last_one, title: o.title, slot: d.slot }, tiers)),
       coins: bal.coins, cost,
     });
   }
