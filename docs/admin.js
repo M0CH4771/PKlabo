@@ -69,7 +69,7 @@
         <fieldset><legend>管理画面にログイン</legend>
           ${info.ready === false ? '<p class="danger small">ADMIN_KEY が未設定か短すぎます（20文字以上）。README の手順で設定してください。</p>' : ''}
           <input type="password" name="k" placeholder="管理キー" autocomplete="current-password" required>
-          ${info.totp ? '<input name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="認証アプリの6桁コード" required>' : '<p class="small muted">⚠ 2段階認証が未設定です。README の手順で設定することを強くおすすめします。</p>'}
+          ${info.totp ? '<input name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="認証アプリの6桁コード" required>' : '<p class="small muted">2段階認証は未設定です（あとから追加できます）。</p>'}
           <p id="lerr" class="danger small" hidden></p>
           <button class="btn primary block">ログイン</button>
           <p class="small muted">5回失敗すると15分間ロックされます。ログインは12時間で自動的に切れます。</p>

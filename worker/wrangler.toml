@@ -38,7 +38,7 @@ BUYBACK_URL = "https://mocha0908.github.io/PKlab/"
 
 # ── 秘密の値は vars ではなく secret で登録（README 参照）──
 # npx wrangler secret put ADMIN_KEY             （必須）管理画面のログインキー（20文字以上のランダムな文字列）
-# npx wrangler secret put ADMIN_TOTP_SECRET     （強く推奨）2段階認証。node scripts/totp-secret.mjs で作成
+# npx wrangler secret put ADMIN_TOTP_SECRET     （任意）2段階認証。node scripts/totp-secret.mjs で作成
 # npx wrangler secret put STRIPE_SECRET_KEY     （任意）入れるとカード決済が有効になる
 # npx wrangler secret put STRIPE_WEBHOOK_SECRET （任意）Stripe の Webhook 署名シークレット
 # npx wrangler secret put TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_VERIFY_SID （任意）電話番号(SMS)認証
